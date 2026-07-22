@@ -1,0 +1,41 @@
+{
+  // Gleipnir project config.
+  //
+  // The Gleipnir framework keeps its own config surface in `.gleipnir/`
+  // (agents, skills, commands, plugins), kept distinct from any target
+  // project's `.opencode/`. opencode is pointed at that directory with the
+  // OPENCODE_CONFIG_DIR environment variable, which makes opencode search
+  // `.gleipnir/` for `agents/`, `skills/`, `commands/` and `plugins/` exactly
+  // as it would the standard `.opencode/` directory.
+  //
+  // Launch Gleipnir with:
+  //
+  //     OPENCODE_CONFIG_DIR=.gleipnir opencode
+  //
+  // A `.envrc` in the repo root sets this automatically if you use direnv
+  //   (https://direnv.net) — run `direnv allow` once. If direnv is not
+  //   installed, either install it (brew install direnv) or set the var in
+  //   your shell rc / prefix each launch as above. The separation also sets up
+  //   the future G-1 story: guard config lives at one known path the S-2
+  //   substrate boundary can make agent-unreachable.
+  //
+  // Status: authored, not yet closed. This is the step-0 scaffold. The
+  // substrate boundary, broker, event bus and deterministic G-5 engine do not
+  // exist yet; see `.gleipnir/AGENTS.md` for the guard-status table.
+
+  "$schema": "https://opencode.ai/config.json",
+
+  // The orchestrator is the primary entry point: the G-5-engine stand-in that
+  // drives the pipeline and delegates every unit of work to a bounded subagent.
+  "default_agent": "orchestrator",
+
+  // Allow one level of nested delegation so the orchestrator's stage
+  // subagents can themselves delegate where the pipeline requires it.
+  "subagent_depth": 1,
+
+  // Framework instruction context loaded into every session.
+  "instructions": [
+    ".gleipnir/AGENTS.md",
+    ".gleipnir/stage-role-map.md"
+  ]
+}
