@@ -46,5 +46,19 @@ latter is exactly what moves into engine code).
 
 ## Status
 
-Roster wiring: verified correct. Roster live: NO in this session (launch-env
-gate). Mechanism: verified working.
+Roster wiring: verified correct. Mechanism: verified working.
+
+## Update — roster now LIVE (after relaunch)
+
+Operator restarted opencode from a direnv-hooked shell
+(`source ~/.zshrc` loaded `OPENCODE_CONFIG_DIR=.gleipnir`). Re-tested:
+
+| Test | Result |
+|---|---|
+| Delegate to `gleipnir-code` | **PASS** — resolved; correctly self-described its bounded implementation role (deny-by-default bash, no git, reports back) |
+| Delegate to `quality-reviewer` | **PASS** — resolved; correctly reported it cannot write/edit/execute |
+
+Tier 1 delegation (capability + context isolation + per-stage model sizing) is
+now available. The transition gate is cleared. Next: exercise it on real work
+(e.g. the G-5 engine build), which informs the Tier 2 deterministic-sequencing
+design.
