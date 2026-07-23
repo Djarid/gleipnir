@@ -53,7 +53,7 @@ configuration.
 | Roster | `.gleipnir/agents/*.md` | config (enforcement-bearing) |
 | Methodology | `.gleipnir/skills/{gotcha,atlas}/SKILL.md` | content |
 | Stage-to-role map | `.gleipnir/stage-role-map.md` | config |
-| Substrate decisions | `.gleipnir/plans/substrate-design-pass.md` | decision record |
+| Substrate decisions | `.gleipnir/decisions/substrate-design-pass.md` | decision record |
 | G-3.1 marker | `src/gleipnir/verify/` | code |
 | Tests | `tests/` | code |
 | Runtime wiring | `opencode.jsonc`, `.envrc` | config |

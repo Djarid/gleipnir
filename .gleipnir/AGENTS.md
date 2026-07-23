@@ -38,8 +38,15 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
     README.md          <- inheritance note + the two named deltas
     gotcha/SKILL.md    <- GOTCHA-as-amended (A1 layer2->G-5, A2 prose->S-2)
     atlas/SKILL.md     <- ATLAS near-verbatim (+ layer-2 caveat)
-  goals/               <- K-1 goals library (empty; later step)
-  plans/               <- plan persistence (ATLAS/GOTCHA discipline)
+  goals/               <- K-1 goals library (process-as-data)
+    manifest.md        <- goals index ("check goals first")
+    plan-format.md     <- required plan/brief structure
+    methodology.md     <- ATLAS/GOTCHA-ahead-of-planning workflow goal
+    README.md          <- what belongs here + the G-5 no-sequencing rule
+  decisions/           <- DURABLE decision records (kept)
+    substrate-design-pass.md  <- D-1/D-4 resolutions
+  plans/               <- TRANSIENT session artifacts (disposable; see README)
+    README.md          <- lifecycle policy
 ```
 
 ## Roster (spec S-1.3.1)
