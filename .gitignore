@@ -4,3 +4,11 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .gleipnir/.tmp/
+
+# Tier-0 scratch: keep the README, ignore everything else
+.gleipnir/var/tmp/*
+!.gleipnir/var/tmp/README.md
+
+# keys/: policy + digest manifests are versioned; real key material never is
+.gleipnir/keys/*.key
+.gleipnir/keys/*.secret

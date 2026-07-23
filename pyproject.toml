@@ -3,6 +3,13 @@ name = "gleipnir"
 version = "0.0.1"
 description = "Gleipnir enforcement framework — reference implementation"
 requires-python = ">=3.11"
+# Enforcement core is stdlib-only by policy (see
+# .gleipnir/decisions/runtime-and-deps.md). No runtime dependencies.
+dependencies = []
+
+[project.optional-dependencies]
+# Dev/test tooling only — NOT shipped, NOT in the S-2 trusted runtime surface.
+dev = ["pytest>=8,<9"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

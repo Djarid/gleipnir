@@ -44,10 +44,30 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
     methodology.md     <- ATLAS/GOTCHA-ahead-of-planning workflow goal
     README.md          <- what belongs here + the G-5 no-sequencing rule
   decisions/           <- DURABLE decision records (kept)
-    substrate-design-pass.md  <- D-1/D-4 resolutions
-  plans/               <- TRANSIENT session artifacts (disposable; see README)
+    substrate-design-pass.md          <- D-1/D-4 resolutions
+    runtime-and-deps.md               <- Python + stdlib-only enforcement core
+    gleipnir-layout-and-memory-model.md <- G-6 tiers + memory-write pipeline
+  memory/              <- Tier 2 USER_REVIEWED: T-1 concept graph (G-6)
+  lessons/             <- Tier 2 USER_REVIEWED: graduated Guardrails (G-4c)
+  logs/                <- Tier 1 RETRIEVED: session-observer / G-4 bus output
+  keys/                <- Tier 3 POLICY: G-3 key + integrity digests [S-2]
+  var/tmp/             <- Tier 0 TEMPORARY: scratch (gitignored)
+  plans/               <- Tier 0 TEMPORARY: session artifacts (disposable)
     README.md          <- lifecycle policy
 ```
+
+## Trust tiers (spec G-6)
+
+`.gleipnir/` is four trust tiers; authority decreases as writability increases,
+and nothing lower may alter anything higher (see
+`decisions/gleipnir-layout-and-memory-model.md`):
+
+| Tier | Name | Paths | Writer |
+|---|---|---|---|
+| 3 | POLICY | `agents/ skills/ goals/ decisions/ stage-role-map.md keys/` | operator only (G-1) |
+| 2 | USER_REVIEWED | `memory/ lessons/` | review-gated pipeline |
+| 1 | RETRIEVED | `logs/` | framework processes (bus/observer) |
+| 0 | TEMPORARY | `plans/ var/tmp/` | bounded agents; disposable |
 
 ## Roster (spec S-1.3.1)
 
@@ -81,9 +101,10 @@ enforcement.
 | G-2 (capability removal) | `bash: deny` + allowlist; git isolated to `git-ops` | Broker as separate process/IPC; **E-1 argument policy**; credential isolation |
 | G-3 (unforgeable evidence) | **G-3.1 built**: keyed HMAC marker (`src/gleipnir/verify/`), tests green; orchestrator instructed not to self-declare done | G-3.1 key *boundary-enforcement* (needs S-2 mount + S-3 preflight); G-3.2 engine attestation binding (needs G-5) |
 | G-4 (unblindable senses) | — | Typed event bus, ledger, observer, novelty triage |
-| G-5 (deterministic orchestration) | `orchestrator` prompt stand-in + stage-role map | The deterministic engine in code |
+| G-5 (deterministic orchestration) | `orchestrator` prompt stand-in + stage-role map; engine stub + tests written (test-first) | Engine implementation; G-3.2 attestation edge |
+| G-6 (memory not poisonable) | Trust-tiered `.gleipnir/` layout + memory-write model authored (`decisions/`) | Review-gated pipeline, digest verification (G-3.1 applied), S-3 preflight, persistence tests |
 
-## Open seams carried from the spec (Part D, E-1..E-4)
+## Open seams carried from the spec (Part D, E-1..E-5)
 
 - **E-1** broker argument policy — `git-ops` denies force-push *by pattern*,
   which is exactly the weakness G-2 removes. Real fix needs structural
@@ -92,11 +113,15 @@ enforcement.
 - **E-2** platform-webhook receiver has no component home.
 - **E-3** novelty-triage signal quality.
 - **E-4** build-order vs G-3 ranking wording.
+- **E-5** methodology amendments authored, bindings (G-5 engine, S-2, G-4c) not built.
 
-## What step 0 does NOT include
+## What this scaffold does NOT include
 
-No S-2 container/mount, no G-2 broker/IPC, no G-3 key, no G-4 bus, no G-5
-engine code, no K-1 goals content, no conformance harness. Those are the
-substrate pass and later build-order steps. See `plans/` for the session
-records: `step-0-scaffold.md`, `substrate-design-pass.md`,
-`session-01-atlas-brief.md` and `session-01-validation.md`.
+No S-2 container/mount, no G-2 broker/IPC, no G-3 key store, no G-4 bus, no
+implemented G-5 engine (stub + tests only), no G-6 memory-write pipeline or
+digest verification, no conformance harness wiring. Those are the substrate
+pass and later build-order steps. Durable resolutions live in `decisions/`
+(`substrate-design-pass.md`, `runtime-and-deps.md`,
+`gleipnir-layout-and-memory-model.md`); transient session records live in
+`plans/` (`step-0-scaffold.md`, `session-01-atlas-brief.md`,
+`session-01-validation.md`, `session-02-*`).
