@@ -72,7 +72,7 @@ enforcement.
 |---|---|---|
 | G-1 (unreachable guards) | Agents deny edits under `.gleipnir/` | S-2 substrate boundary; terminal closure + S-3 preflight |
 | G-2 (capability removal) | `bash: deny` + allowlist; git isolated to `git-ops` | Broker as separate process/IPC; **E-1 argument policy**; credential isolation |
-| G-3 (unforgeable evidence) | Orchestrator instructed not to self-declare done | HMAC marker key (G-3.1); engine attestation binding (G-3.2) |
+| G-3 (unforgeable evidence) | **G-3.1 built**: keyed HMAC marker (`src/gleipnir/verify/`), tests green; orchestrator instructed not to self-declare done | G-3.1 key *boundary-enforcement* (needs S-2 mount + S-3 preflight); G-3.2 engine attestation binding (needs G-5) |
 | G-4 (unblindable senses) | — | Typed event bus, ledger, observer, novelty triage |
 | G-5 (deterministic orchestration) | `orchestrator` prompt stand-in + stage-role map | The deterministic engine in code |
 
@@ -90,4 +90,6 @@ enforcement.
 
 No S-2 container/mount, no G-2 broker/IPC, no G-3 key, no G-4 bus, no G-5
 engine code, no K-1 goals content, no conformance harness. Those are the
-substrate pass and later build-order steps. See `plans/step-0-scaffold.md`.
+substrate pass and later build-order steps. See `plans/` for the session
+records: `step-0-scaffold.md`, `substrate-design-pass.md`,
+`session-01-atlas-brief.md` and `session-01-validation.md`.

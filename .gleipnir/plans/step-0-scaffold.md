@@ -2,7 +2,8 @@
 
 ## App Brief (ATLAS Architect)
 
-- **Problem:** Gleipnir has a spec (v0.3.7) but no scaffold. Before the heavy
+- **Problem:** Gleipnir has a spec (the versioned `gleipnir_specification_*.md`
+  series; latest is canonical) but no scaffold. Before the heavy
   substrate design pass, we need the basics: the agent roster, the methodology
   skills those agents run on, and a right-sized model per pipeline stage.
 - **User:** the builder implementing Gleipnir; and the future G-5 engine that
