@@ -26,8 +26,8 @@ Pipeline (spec G-5): `brainstorm -> plan -> spec-review -> test -> code -> quali
 
 | Stage | Bound role | Model tier | Rationale (goal: quality-efficient outcomes per token) |
 |---|---|---|---|
-| brainstorm | orchestrator | Opus (temp raised) | Divergent framing; the orchestrator runs it with higher temperature |
-| plan | orchestrator | **Opus** | Unbounded judgment; ATLAS Architect/Trace decisions compound most. The one place premium pays for itself |
+| brainstorm | gleipnir-plan | Opus (temp raised) | Divergent framing; the planning role runs it, not the orchestrator |
+| plan | gleipnir-plan | **Opus** | Unbounded judgment; ATLAS Architect/Trace decisions compound most. The one place premium pays for itself. Owned by the dedicated planning role, not the orchestrator |
 | spec-review | quality-reviewer | Sonnet | Judgment bounded by the spec as rubric |
 | test | gleipnir-code | Sonnet (candidate for uplift) | In test-first, tests *define* correctness — the correctness arbiter. Watch for uplift to Opus if test design proves weak |
 | code | gleipnir-code | **Sonnet** | Bounded by plan + ATLAS-Assemble order + pre-written tests. The test is the arbiter, not model IQ — do not pay Opus here |
@@ -50,6 +50,11 @@ aperture-served models available in this environment.
 
 - A stage may be routed **only** to its bound role. No role performs a stage
   it is not bound to.
+- **The orchestrator sequences; it does not perform stages.** Planning
+  (brainstorm/plan) is delegated to `gleipnir-plan`, not authored by the
+  orchestrator. The orchestrator's only bound stage is `gate` (reading
+  attestation and emitting pipeline state), which is near-deterministic; every
+  other stage is delegated to its bound role.
 - The `git` stage binds to `git-ops` and only `git-ops` — the broker
   single-holder clause. No other role holds git or credentials.
 - One verb, object, verification and boundary per delegation; exploration and

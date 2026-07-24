@@ -27,8 +27,9 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
 .gleipnir/             <- framework config dir (OPENCODE_CONFIG_DIR)
   AGENTS.md            <- this file
   stage-role-map.md    <- net-new S-1.3.1 artifact: pipeline stage -> role
-  agents/              <- the 6-role roster (reference floor, deny-by-default)
-    orchestrator.md    <- primary; G-5 engine stand-in
+  agents/              <- the 7-role roster (reference floor, deny-by-default)
+    orchestrator.md    <- primary; G-5 engine stand-in (sequences, does not plan)
+    gleipnir-plan.md   <- planning (brainstorm+plan); Tier-0 writer of plans/
     gleipnir-code.md   <- implementation (corrected @aetos-code exemplar)
     quality-reviewer.md<- read-only review (spec-review + quality stages)
     git-ops.md         <- sole git/broker holder (single-holder, G-2)
@@ -78,6 +79,16 @@ allowlist, closing the AETOS v4 enumerable-bypass hole at the roster level.
 
 The broker single-holder clause (G-2): only `git-ops` holds git; every other
 role denies it.
+
+**Separation of sequencing from planning.** The `orchestrator` sequences the
+pipeline and judges results; it does **not** author plans. The `plan` and
+`brainstorm` stages are delegated to `gleipnir-plan`, a dedicated planning role
+(Opus tier — the one place unbounded judgment justifies premium spend).
+
+**First Tier-0 writer.** `gleipnir-plan` is the first concrete operational-zone
+writer: it may write `.gleipnir/plans/**` (Tier 0) and nothing else in
+`.gleipnir/`, proving the per-path least-privilege write grant from the memory
+model. All other roster agents still deny all `.gleipnir/` writes.
 
 ## Model sizing
 

@@ -14,6 +14,7 @@ permission:
   question: allow
   task:
     "*": deny
+    gleipnir-plan: allow
     gleipnir-code: allow
     quality-reviewer: allow
     git-ops: allow
@@ -40,15 +41,17 @@ judgment only.
 
     brainstorm -> plan -> spec-review -> test -> code -> quality -> git -> gate
 
-ATLAS and GOTCHA run *ahead of* planning: do Architect/Trace
-(`skills/atlas/SKILL.md`) before drafting any plan. Write the plan to disk
-immediately — writing a plan is planning, never blocked.
+ATLAS and GOTCHA run *ahead of* planning. **You do not do the planning
+yourself** — you delegate the brainstorm and plan stages to `gleipnir-plan`,
+which runs ATLAS Architect/Trace and writes the plan to disk. Your job is to
+sequence, delegate, and judge results, not to author plans or code.
 
 ## Stage-to-role map
 
 Delegate each stage to the role bound in `../stage-role-map.md`. Do not
 perform a stage yourself and do not route a stage to a role it is not bound
-to.
+to. Your only bound stage is `gate`; everything else — including
+brainstorm/plan (`gleipnir-plan`) — is delegated.
 
 ## Discipline
 
