@@ -1,11 +1,10 @@
 """G-5 conformance and unit tests for the deterministic orchestration engine.
 
-Test-first phase (spec G-5, G-3.2): ``src/gleipnir/engine/__init__.py`` is a
-stub -- every ``Engine`` method raises ``NotImplementedError``. These tests
-are written against the behavioural contract recorded in
-``src/gleipnir/engine/DESIGN.md`` and are expected to FAIL until that
-contract is implemented in a later ("code") delegation. They must not
-ImportError; every name referenced below already exists in the stub.
+Spec G-5, G-3.2: ``src/gleipnir/engine/__init__.py`` implements the engine
+contract in full. These tests are written against the behavioural contract
+recorded in ``src/gleipnir/engine/DESIGN.md`` and pass against that
+implementation (49/49). Every name referenced below exists in the
+implemented module.
 
 Spec conformance [D], G-5:
   * "escalation fires at exactly N by code" -> TestLoopCapExactness.

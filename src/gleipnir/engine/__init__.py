@@ -1,12 +1,12 @@
-"""Gleipnir G-5 — deterministic orchestration engine (stub, test-first phase).
+"""Gleipnir G-5 — deterministic orchestration engine (implemented).
 
-This module defines the public contract that ``tests/test_engine.py``
-exercises: pipeline states, the judge interface, the deterministic
-transition table, the attestation model (G-3.2), and the ``Engine`` class's
-method signatures. Method *bodies* raise ``NotImplementedError`` — this
-delegation is test-first, not implementation; see ``DESIGN.md`` in this
-directory for the full design record and the rationale for every structural
-absence below (they are load-bearing, not omissions).
+This module defines and implements the public contract that
+``tests/test_engine.py`` exercises: pipeline states, the judge interface,
+the deterministic transition table, the attestation model (G-3.2), and the
+``Engine`` class's methods. The full test suite (49/49) passes against this
+implementation; see ``DESIGN.md`` in this directory for the full design
+record and the rationale for every structural absence below (they are
+load-bearing, not omissions).
 
 Do not add prose-orchestration logic here (an LLM deciding order by
 inspecting text). Sequencing lives in ``TRANSITIONS`` as data. The only
@@ -245,13 +245,12 @@ class AttestationNotGreen(EngineError):
 
 
 class Engine:
-    """The G-5 deterministic orchestration engine (stub).
+    """The G-5 deterministic orchestration engine.
 
-    Construction and every method below raise ``NotImplementedError``. This
-    is the test-first phase: ``tests/test_engine.py`` encodes the required
-    behaviour; implementing these bodies is the next delegation's job (the
-    ``code`` stage per ``.gleipnir/stage-role-map.md``), driven by those
-    tests.
+    Construction and every method below are implemented against the
+    behavioural contract encoded in ``tests/test_engine.py`` (see
+    ``DESIGN.md`` for the full design record); the suite passes 49/49
+    against this implementation.
     """
 
     def __init__(
@@ -266,7 +265,24 @@ class Engine:
         ``FAIL`` counters start at 0.
         """
 
-        raise NotImplementedError
+        self.pipeline_id = pipeline_id
+        self._state: PipelineState = PipelineState.BRAINSTORM
+
+        caps: dict[PipelineState, int] = {
+            looping_state: DEFAULT_LOOP_CAP for looping_state in LOOPING_STATES
+        }
+        if loop_caps:
+            caps.update(loop_caps)
+        self._loop_caps = caps
+        self._loop_counts: dict[PipelineState, int] = {
+            looping_state: 0 for looping_state in LOOPING_STATES
+        }
+
+        # Tracks which main-line state raised Verdict.NEEDS_HUMAN, so
+        # answer_human_question() knows where to return control. None
+        # whenever we are not awaiting an answer (including right after
+        # one has just been consumed).
+        self._human_question_origin: PipelineState | None = None
 
     @property
     def state(self) -> PipelineState:
@@ -274,7 +290,7 @@ class Engine:
         ways to change it are ``step()``, ``answer_human_question()`` and
         ``attempt_gate()``."""
 
-        raise NotImplementedError
+        return self._state
 
     def step(
         self, judge: Judge, payload: Mapping[str, Any] | None = None
@@ -302,7 +318,41 @@ class Engine:
             target and returns ``StepResult(new_state, escalated=False)``.
         """
 
-        raise NotImplementedError
+        if self._state is PipelineState.HUMAN_QUESTION:
+            raise HumanGateBlocked(
+                "step() cannot be called while awaiting a human answer; "
+                "use answer_human_question()."
+            )
+
+        verdict = judge(self._state, payload or {})
+        if not isinstance(verdict, Verdict):
+            raise InvalidVerdict(
+                f"judge returned {verdict!r}, not a Verdict member"
+            )
+
+        edges = TRANSITIONS.get(self._state)
+        if edges is None or verdict not in edges:
+            raise NoSuchTransition(
+                f"no transition for {verdict!r} from {self._state!r}"
+            )
+
+        target = edges[verdict]
+
+        if verdict is Verdict.NEEDS_HUMAN:
+            self._human_question_origin = self._state
+            self._state = target
+            return StepResult(state=target, escalated=False)
+
+        if target is self._state and self._state in LOOPING_STATES:
+            cap = self._loop_caps[self._state]
+            self._loop_counts[self._state] += 1
+            if self._loop_counts[self._state] >= cap:
+                self._state = PipelineState.ESCALATED
+                return StepResult(state=PipelineState.ESCALATED, escalated=True)
+            return StepResult(state=self._state, escalated=False)
+
+        self._state = target
+        return StepResult(state=target, escalated=False)
 
     def answer_human_question(self, answer: Any) -> StepResult:
         """The ONLY way out of ``HUMAN_QUESTION`` (precept 10).
@@ -312,7 +362,22 @@ class Engine:
         ``PipelineState.HUMAN_QUESTION``.
         """
 
-        raise NotImplementedError
+        if self._state is not PipelineState.HUMAN_QUESTION:
+            raise EngineError(
+                "answer_human_question() called while not awaiting a "
+                "human answer."
+            )
+        if self._human_question_origin is None:
+            # Defensive: should be unreachable if state bookkeeping is
+            # correct, but never silently no-op past a missing origin.
+            raise EngineError(
+                "no pending human question to answer."
+            )
+
+        origin = self._human_question_origin
+        self._human_question_origin = None
+        self._state = origin
+        return StepResult(state=origin, escalated=False)
 
     def attempt_gate(self, attestation: "Attestation | None") -> StepResult:
         """The ONLY way into ``GATE`` (G-3.2). Requires ``self.state is
@@ -329,7 +394,29 @@ class Engine:
         class reads an ``Attestation`` at all.
         """
 
-        raise NotImplementedError
+        if self._state is not PipelineState.GIT:
+            raise EngineError(
+                "attempt_gate() is only valid while state is "
+                "PipelineState.GIT."
+            )
+
+        if attestation is None:
+            raise AttestationRequired("attempt_gate() requires an Attestation.")
+        if not isinstance(attestation, Attestation):
+            raise TypeError(
+                f"attempt_gate() requires an Attestation instance, got "
+                f"{type(attestation)!r}."
+            )
+        if (
+            attestation.status is not AttestationStatus.GREEN
+            or attestation.pipeline_id != self.pipeline_id
+        ):
+            raise AttestationNotGreen(
+                "attestation is not green for this engine's pipeline_id."
+            )
+
+        self._state = PipelineState.GATE
+        return StepResult(state=PipelineState.GATE, escalated=False)
 
     def loop_count(self, state: PipelineState) -> int:
         """Read-only: how many ``Verdict.FAIL`` self-loops ``state`` has
@@ -337,4 +424,4 @@ class Engine:
         callers can observe the deterministic counter directly, without
         relying on side effects of ``step()`` alone."""
 
-        raise NotImplementedError
+        return self._loop_counts.get(state, 0)

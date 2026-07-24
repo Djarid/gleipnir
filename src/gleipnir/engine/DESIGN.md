@@ -1,11 +1,10 @@
 # G-5 deterministic orchestration engine — design record
 
-Status: **authored, test-first phase.** This document and
+Status: **authored and implemented.** This document and
 `tests/test_engine.py` are the specification; `__init__.py` in this
-directory is a stub (signatures + data, `NotImplementedError` bodies) so the
-tests import cleanly and fail on behaviour, not on missing names.
-Implementing the bodies is the next delegation's job (the `code` stage,
-bound to `gleipnir-code` per `.gleipnir/stage-role-map.md`), driven by the
+directory implements that contract in full, and the test suite (49/49)
+passes against it. The bodies were implemented in the `code` delegation,
+bound to `gleipnir-code` per `.gleipnir/stage-role-map.md`, driven by the
 tests recorded here — test-first, per the discipline this role operates
 under.
 
@@ -149,12 +148,8 @@ round two yet."
 | "Drive a stage to completion with CI absent, pending and red: engine must refuse... not satisfiable by any agent-supplied text" | `attempt_gate(None)`, `attempt_gate(Attestation(..., ABSENT/PENDING/RED))`, `attempt_gate("trust me, it passed")` (wrong type) all refuse; `state` unchanged in every case |
 | precept 10, "skipped twice becomes impossible" | `HUMAN_QUESTION` has no table entry; `step()` always raises while there; only `answer_human_question` exits |
 
-## Non-goals (this delegation)
+## Non-goals (engine core scope boundaries)
 
-* No implementation bodies. Every `Engine` method raises
-  `NotImplementedError`; the data (enums, `TRANSITIONS`, exception types)
-  is real because tests must import it, but behaviour is deliberately
-  absent.
 * No real CI/attestation fetch. `Attestation` is a plain value the caller
   supplies; wiring it to an actual CI API is outside G-5's engine-core
   scope as specified (the spec says the engine *fetches* it, but the fetch
