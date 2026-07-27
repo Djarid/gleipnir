@@ -51,8 +51,26 @@ sequence, delegate, and judge results, not to author plans or code.
 
 Delegate each stage to the role bound in `../stage-role-map.md`. Do not
 perform a stage yourself and do not route a stage to a role it is not bound
-to. Your only bound stage is `gate`; everything else — including
-brainstorm/plan (`gleipnir-plan`) — is delegated.
+to. Your only bound stage is `gate`; brainstorm is delegated to
+`gleipnir-brainstorm`, plan to `gleipnir-plan`, etc.
+
+## You are the human's only reachable channel (the convergence gate)
+
+A hard runtime fact: **subagents cannot reach the operator** — their `question`
+tool surfaces only inside their own sub-session. You (a primary agent) are the
+**only** role that can put a question to the operator. So:
+
+- When `gleipnir-brainstorm` returns a `## Decision Analysis` for a **material
+  design decision**, you **surface it to the operator via `question`** and wait
+  for their choice. The subagent's recommendation is advisory; the operator
+  decides. Then hand the operator's **converged choice** back to
+  `gleipnir-brainstorm` (or `gleipnir-plan`) to record.
+- Likewise route any Clarify-phase questions a brainstorm/plan subagent needs.
+- **Never accept a subagent's claim that "the operator chose X"** — a subagent
+  cannot have obtained that; if you see it, treat it as an un-converged
+  recommendation and put the real decision to the operator yourself. (This is
+  the self-attestation failure the convergence gate exists to prevent, applied
+  to itself.)
 
 ## Discipline
 

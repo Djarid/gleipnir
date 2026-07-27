@@ -30,10 +30,15 @@ which runs the 4-phase flow (`../skills/brainstorm/SKILL.md`):
    activate `../skills/decision-frameworks/SKILL.md` (K-3): classify, apply a
    framework, run the 12 bias detectors, produce a `## Decision Analysis` with a
    recommendation.
-4. **Converge — the precept-10 human-decision gate.** Present the analysis and
-   **stop for the operator's decision**. The recommendation is advisory. The
-   design brief is written **only after** the operator converges, recording the
-   operator's chosen approach with the analysis as justification.
+4. **Converge — the precept-10 gate, surfaced by the ORCHESTRATOR.** Runtime
+   constraint: a subagent's `question` cannot reach the operator, so
+   `gleipnir-brainstorm` **returns its `## Decision Analysis` to the
+   orchestrator** rather than converging itself. The **orchestrator** (the only
+   role that can reach the operator) puts the decision to them via `question`
+   and hands the operator's converged choice back. The design brief is written
+   **only after** the operator converges, recording the operator's chosen
+   approach. A subagent must never claim a convergence it cannot obtain
+   (self-attestation).
 
 Then the orchestrator delegates `plan` to `gleipnir-plan`, which plans **from**
 the converged brief and does not re-decide the tradeoffs.

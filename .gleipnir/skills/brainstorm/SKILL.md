@@ -10,6 +10,7 @@ metadata:
   inheritance: near-verbatim
   amendments:
     - "Converge = the precept-10 human-decision gate: material design decisions converge on the operator BEFORE the brief/plan is finalized. Under G-5 this is an engine-enforced decision state, not prose the LLM may skip."
+    - "Convergence is surfaced by the ORCHESTRATOR, not a subagent: a subagent's `question` cannot reach the operator, so a brainstorm subagent produces the Decision Analysis and RETURNS it; the orchestrator asks the operator and hands back the converged choice. A subagent must never claim a convergence it cannot obtain (self-attestation)."
 ---
 
 > **GLEIPNIR INHERITANCE NOTE (read first).** Inherited near-verbatim from AETOS
@@ -111,18 +112,35 @@ brief?"
 
 Once the user confirms, write the design brief to disk (see Output Format below).
 
-> **[GLEIPNIR] Converge is the precept-10 human-decision gate — not optional.**
+> **[GLEIPNIR] Converge is the precept-10 human-decision gate — and it is
+> surfaced by the ORCHESTRATOR, not by a subagent.** This is a hard runtime
+> constraint, learned by dogfooding: **a subagent's `question` tool does NOT
+> reach the operator** — it surfaces only inside the subagent's own
+> sub-session. So a brainstorm *subagent* that "asks the operator to converge"
+> and records an answer has **converged with itself** — self-attestation, the
+> exact failure this whole gate exists to prevent. Therefore:
+>
+> - **If you are running as a subagent** (e.g. `gleipnir-brainstorm`): run
+>   Clarify → Explore → Propose, produce the `## Decision Analysis` (options +
+>   framework + bias check + recommendation), and then **RETURN it to the
+>   orchestrator. Do NOT call `question` to "converge", do NOT decide, and do
+>   NOT write the design brief for a material decision until the operator's
+>   choice has come back from the orchestrator.** Never claim a convergence you
+>   cannot structurally obtain.
+> - **The orchestrator** (a primary agent, which *can* reach the operator) puts
+>   the decision to the operator via `question`, then hands the operator's
+>   **converged choice** back so the brief records it.
+>
 > Every **material design decision** (a tradeoff between viable approaches; a
 > choice a `decision-frameworks` analysis flagged; anything with lasting or
-> hard-to-reverse consequences) converges on the **operator** here, before the
-> brief is written. The planner (`gleipnir-plan`) plans *from* the converged
-> brief and does **not** get to decide these itself. A `decision-frameworks`
-> `## Decision Analysis` (options + framework + bias check + recommendation) is
-> the input to convergence, never the decision. Under G-5 this is a
-> deterministic decision state with no outgoing edge until the operator answers;
-> here (pre-engine) it is honoured by discipline. Do not confuse a downstream
-> spec-review passing with operator convergence — they are different gates:
-> convergence decides *what*, spec-review checks the plan built on that decision.
+> hard-to-reverse consequences) is decided by the **operator** this way, before
+> the brief is finalized. `gleipnir-plan` plans *from* the converged brief and
+> does **not** decide these itself. The Decision Analysis is the *input* to
+> convergence, never the decision. Under G-5 this is a deterministic decision
+> state with no outgoing edge until the operator answers; pre-engine it is
+> honoured by this discipline. Do not confuse a downstream spec-review passing
+> with operator convergence — different gates: convergence decides *what*,
+> spec-review checks the plan built on that decision.
 
 ## Output Format: Design Brief
 
