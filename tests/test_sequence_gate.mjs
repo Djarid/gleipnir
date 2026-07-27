@@ -175,3 +175,38 @@ test("ARMED + bridge but NO key: ABORTS (fail-closed within a run)", async () =>
     })
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+
+
+// ---------------------------------------------------------------------------
+// Armed-run dogfood cross-language handshake (assertion 5, form 2 -- the
+// LIVE-minted bridge, not just the frozen golden fixture above). Plan:
+// `.gleipnir/plans/armed-run-dogfood.md` §2.3/§4 step 7/§5 assertion 5.
+//
+// `dogfood_bridge.json` is a Python-minted PLAN-state bridge produced by a
+// live `Driver` driven to PLAN with `key_file=golden_key.bin` and
+// `write_bridge(minted_at=1000)` (see
+// `tests/test_armed_run_dogfood.py::test_live_driver_mint_at_plan_matches_the_committed_dogfood_fixture`,
+// which asserts this file is byte-for-byte what that live driver path
+// produces). Loaded here exactly like the golden-marker block above: same
+// shared `golden_key.bin`, same symmetric freshness override for the fixed
+// `minted_at=1000` (`now: 1001`, `maxAgeSeconds: HUGE`).
+// ---------------------------------------------------------------------------
+
+const dogfoodBridge = JSON.parse(readFileSync(join(fixtures, "dogfood_bridge.json"), "utf8"))
+
+test("dogfood: validates the live-driver-minted PLAN bridge (byte-for-byte MAC contract)", () => {
+  assert.equal(validateMarker(dogfoodBridge, KEY, { maxAgeSeconds: HUGE, now: NOW }), true)
+})
+
+test("dogfood: rejects a one-byte-tampered copy (state changed, mac reused)", () => {
+  // Mirrors golden_marker_tampered.json's construction: flip pipeline_state,
+  // keep the original mac -- the recomputed HMAC no longer matches.
+  const tamperedDogfoodBridge = { ...dogfoodBridge, pipeline_state: "git" }
+  assert.notEqual(tamperedDogfoodBridge.pipeline_state, dogfoodBridge.pipeline_state)
+  assert.equal(validateMarker(tamperedDogfoodBridge, KEY, { maxAgeSeconds: HUGE, now: NOW }), false)
+})
+
+test("dogfood: allow-decision matches the bridge's allowed_agents list", () => {
+  assert.equal(isDelegationAllowed(dogfoodBridge, "gleipnir-plan"), true)
+  assert.equal(isDelegationAllowed(dogfoodBridge, "git-ops"), false)
+})
