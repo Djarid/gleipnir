@@ -220,12 +220,33 @@ def test_compute_tree_hash_include_is_a_file(tmp_path: Path):
 
 
 def test_compute_tree_hash_extra_file_outside_root(tmp_path: Path):
-    """An extra_file resolving outside the root uses the as_posix() fallback
-    (the relative_to ValueError branch) rather than crashing."""
-    outside = tmp_path.parent / "outside.txt"
-    outside.write_text("data\n")
+    """An extra_file that is an ABSOLUTE path in a genuinely different tree
+    hits the `relative_to` ValueError fallback (marker.py ~154-155).
+
+    Note: a relative "../foo" string does NOT trigger this — pathlib's
+    relative_to is lexical, and root / "../foo" keeps root as a literal prefix,
+    so relative_to succeeds. Only an absolute path whose leading components
+    diverge from root makes `root / abs` return the absolute path unchanged and
+    `relative_to(root)` raise ValueError.
+
+    Assertion is meaningful, not tautological: we prove the outside file's
+    CONTENT actually folded into the digest (only possible if this code path
+    read it), by showing the hash changes when that content changes.
+    """
+    # A sibling tree, absolute, whose top-level components differ from tmp_path.
+    outside_dir = tmp_path.parent / (tmp_path.name + "_outside")
+    outside_dir.mkdir()
+    outside = outside_dir / "outside.txt"
     try:
-        h = compute_tree_hash(tmp_path, include=(), extra_files=("../outside.txt",))
-        assert isinstance(h, str) and len(h) == 64
+        outside.write_text("payload-A\n")
+        h_a = compute_tree_hash(tmp_path, include=(), extra_files=(str(outside),))
+        outside.write_text("payload-B\n")
+        h_b = compute_tree_hash(tmp_path, include=(), extra_files=(str(outside),))
+        # If the absolute outside path had NOT been folded in (branch skipped or
+        # file ignored), these would be identical. They differ => the fallback
+        # path read and hashed the outside file's content.
+        assert h_a != h_b
+        assert len(h_a) == 64 and len(h_b) == 64
     finally:
-        outside.unlink()
+        outside.unlink(missing_ok=True)
+        outside_dir.rmdir()

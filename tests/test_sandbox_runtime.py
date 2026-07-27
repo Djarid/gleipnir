@@ -417,7 +417,7 @@ def test_image_available_never_invokes_build(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Fail-closed top-level orchestration (prepare_sandbox_run / prepare_pytest_run)
+# Fail-closed top-level orchestration (prepare_sandbox_run)
 # ---------------------------------------------------------------------------
 
 def test_prepare_sandbox_run_raises_when_no_cri_and_never_returns_argv(monkeypatch, repo_and_scratch):
