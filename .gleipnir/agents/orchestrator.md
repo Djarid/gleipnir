@@ -14,6 +14,7 @@ permission:
   question: allow
   task:
     "*": deny
+    gleipnir-brainstorm: allow
     gleipnir-plan: allow
     gleipnir-code: allow
     quality-reviewer: allow

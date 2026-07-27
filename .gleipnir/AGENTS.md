@@ -27,9 +27,10 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
 .gleipnir/             <- framework config dir (OPENCODE_CONFIG_DIR)
   AGENTS.md            <- this file
   stage-role-map.md    <- net-new S-1.3.1 artifact: pipeline stage -> role
-  agents/              <- the 7-role roster (reference floor, deny-by-default)
+  agents/              <- the 8-role roster (reference floor, deny-by-default)
     orchestrator.md    <- primary; G-5 engine stand-in (sequences, does not plan)
-    gleipnir-plan.md   <- planning (brainstorm+plan); Tier-0 writer of plans/
+    gleipnir-brainstorm.md <- design explorer; precept-10 convergence gate (Tier-0 writer)
+    gleipnir-plan.md   <- planning FROM converged brief; Tier-0 writer of plans/
     gleipnir-code.md   <- implementation (corrected @aetos-code exemplar)
     quality-reviewer.md<- read-only review (spec-review + quality stages)
     git-ops.md         <- sole git/broker holder (single-holder, G-2)
@@ -39,6 +40,8 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
     README.md          <- inheritance note + the two named deltas
     gotcha/SKILL.md    <- GOTCHA-as-amended (A1 layer2->G-5, A2 prose->S-2)
     atlas/SKILL.md     <- ATLAS near-verbatim (+ layer-2 caveat)
+    brainstorm/SKILL.md<- near-verbatim (Converge = precept-10 decision gate)
+    decision-frameworks/SKILL.md <- K-3: 10 frameworks + 12 bias detectors
   goals/               <- K-1 goals library (process-as-data)
     manifest.md        <- goals index ("check goals first")
     plan-format.md     <- required plan/brief structure
@@ -81,15 +84,22 @@ allowlist, closing the AETOS v4 enumerable-bypass hole at the roster level.
 The broker single-holder clause (G-2): only `git-ops` holds git; every other
 role denies it.
 
-**Separation of sequencing from planning.** The `orchestrator` sequences the
-pipeline and judges results; it does **not** author plans. The `plan` and
-`brainstorm` stages are delegated to `gleipnir-plan`, a dedicated planning role
-(Opus tier — the one place unbounded judgment justifies premium spend).
+**Separation of sequencing, decision-surfacing, and planning.** Three roles,
+three jobs: the `orchestrator` *sequences* and judges (does not author plans);
+`gleipnir-brainstorm` runs the `brainstorm` stage and *surfaces material design
+decisions to the operator* (Clarify→Explore→Propose→**Converge**, the precept-10
+gate, using the K-3 decision-frameworks + bias catalogue); `gleipnir-plan` runs
+the `plan` stage *from the converged brief* and does **not** decide material
+tradeoffs itself. This split exists because, during the framework's own build,
+plan-stage design decisions were made inside the planner and validated by the
+review gate but never surfaced to the operator to decide — the convergence gate
+closes that.
 
-**First Tier-0 writer.** `gleipnir-plan` is the first concrete operational-zone
-writer: it may write `.gleipnir/plans/**` (Tier 0) and nothing else in
-`.gleipnir/`, proving the per-path least-privilege write grant from the memory
-model. All other roster agents still deny all `.gleipnir/` writes.
+**Tier-0 writers.** `gleipnir-brainstorm` and `gleipnir-plan` are the concrete
+operational-zone writers: each may write `.gleipnir/plans/**` (Tier 0) and
+nothing else in `.gleipnir/`, proving the per-path least-privilege write grant
+from the memory model. All other roster agents still deny all `.gleipnir/`
+writes.
 
 ## Model sizing
 

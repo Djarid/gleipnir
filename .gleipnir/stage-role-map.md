@@ -26,8 +26,8 @@ Pipeline (spec G-5): `brainstorm -> plan -> spec-review -> test -> code -> quali
 
 | Stage | Bound role | Model tier | Rationale (goal: quality-efficient outcomes per token) |
 |---|---|---|---|
-| brainstorm | gleipnir-plan | Opus (temp raised) | Divergent framing; the planning role runs it, not the orchestrator |
-| plan | gleipnir-plan | **Opus** | Unbounded judgment; ATLAS Architect/Trace decisions compound most. The one place premium pays for itself. Owned by the dedicated planning role, not the orchestrator |
+| brainstorm | gleipnir-brainstorm | Opus (temp raised) | Divergent framing + the precept-10 human-decision gate: material tradeoffs (via the K-3 decision-frameworks analysis) converge on the operator BEFORE planning. A dedicated role, not the planner |
+| plan | gleipnir-plan | **Opus** | Unbounded judgment; ATLAS Architect/Trace. Plans FROM the converged brief; does NOT decide material tradeoffs itself (those are the brainstorm gate's). The one place premium pays for itself |
 | spec-review | quality-reviewer | Sonnet | Judgment bounded by the spec as rubric |
 | test | gleipnir-code | Sonnet (candidate for uplift) | In test-first, tests *define* correctness — the correctness arbiter. Watch for uplift to Opus if test design proves weak |
 | code | gleipnir-code | **Sonnet** | Bounded by plan + ATLAS-Assemble order + pre-written tests. The test is the arbiter, not model IQ — do not pay Opus here |

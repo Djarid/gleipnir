@@ -13,6 +13,19 @@ of the framework's goal (quality-efficient outcomes per LLM token).
 |---|---|---|---|
 | `gotcha/SKILL.md` | `aetos/.aetos/skills/gotcha/SKILL.md` (v1.0, 349 lines) | **GOTCHA-as-amended** (two deltas) | MIT, origin: aetos |
 | `atlas/SKILL.md` | `aetos/.aetos/skills/atlas/SKILL.md` (v1.0, 300 lines) | **near-verbatim** (one caveat) | MIT, origin: aetos |
+| `brainstorm/SKILL.md` | `aetos/.aetos/skills/brainstorm/SKILL.md` (v1.1) | **near-verbatim** (Converge = precept-10 human-decision gate) | MIT, origin: aetos |
+| `decision-frameworks/SKILL.md` | `aetos/.aetos/skills/decision-frameworks/SKILL.md` (v1.2) | **near-verbatim** — this IS Gleipnir's **K-3**; analysis is input to convergence, bias signal feeds G-4c | MIT, origin: aetos |
+
+**Why brainstorm + decision-frameworks were added (the decision-surfacing fix).**
+During the framework's own construction, plan-stage *design decisions* (e.g. a
+revert-cap model) were made inside `gleipnir-plan` and validated by the
+spec-review gate, but never surfaced to the operator to decide. AETOS already
+solved this: a dedicated brainstorm role runs Clarify→Explore→**Propose**→
+**Converge**, where material decisions — analysed via the decision-frameworks
+K-3 catalogue (10 frameworks + 12 bias detectors) — converge on the operator
+*before* the plan is finalized. Gleipnir now mirrors that: `gleipnir-brainstorm`
+owns these two skills and the convergence gate; `gleipnir-plan` plans only from
+a converged brief.
 
 Both are copied verbatim as the inheritance base, then annotated inline. No
 original text was deleted; superseded passages are retained for provenance
