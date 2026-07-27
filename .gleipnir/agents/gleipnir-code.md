@@ -18,15 +18,10 @@ permission:
   webfetch: deny
   bash:
     "*": deny
-    "npm run build": allow
-    "npm test": allow
-    "npm run lint*": allow
-    "pytest*": allow
-    "go build*": allow
-    "go test*": allow
-    "make build": allow
-    "make test": allow
-    "make lint": allow
+    "bin/gleipnir-sandbox test": allow
+    "bin/gleipnir-sandbox lint": allow
+    "./bin/gleipnir-sandbox test": allow
+    "./bin/gleipnir-sandbox lint": allow
     "git*": deny
     "gh*": deny
     "glab*": deny
@@ -45,20 +40,32 @@ You implement code and tests inside a single bounded delegation. You are the
 **Why the permissions look like this (spec S-1.3.1, G-2).** AETOS v4 gave
 `@aetos-code` `bash: "*": allow` with string-prefix denies on `git`/`gh`.
 That is the enumerable-bypass hole: `sh -c "git push"` evades every prefix
-deny. Gleipnir corrects it to `bash: "*": deny` plus an explicit
-build/test/lint allowlist. Dangerous verbs are **absent by capability**, not
-caught by pattern. You have no path to git, no credentials, and cannot reach
-the guard config under `.gleipnir/`.
+deny. Gleipnir corrects it to `bash: "*": deny` plus an explicit allowlist.
+Dangerous verbs are **absent by capability**, not caught by pattern. You have
+no path to git, no credentials, and cannot reach the guard config under
+`.gleipnir/`.
 
-**Status: authored, not yet closed.** The real capability boundary is the S-2
-substrate (container/mount), not this frontmatter. Until the substrate lands,
-these permissions are the opencode-level approximation. The general-bash
-sandbox where build/test/lint run safely (G-2) does not exist yet.
+**Build/test/lint run in the S-2 sandbox, not on the host.** Your only build
+capability is the sandbox entrypoint `bin/gleipnir-sandbox test|lint` — an
+exact-match grant (no trailing wildcard, so no compound-command can piggyback
+on a prefix). That entrypoint runs the suite inside an ephemeral container
+(`--network=none`, source mounted read-only), so agent-authored test code
+executes in a bounded blast radius, never on the host (G-2 / T-6). Host
+`pytest`/`make`/`npm` are **no longer granted** — the previous host-shaped
+allowlist was replaced when the sandbox landed. `test` reports line+branch
+coverage; aim to keep it at/above the 85% target and justify anything below.
+
+**Status: authored, partially closed.** The sandbox now bounds execution
+(G-2 blast radius is real). Still not closed: the S-2 read-only *mount* of the
+enforcement config and credential isolation (E-1) — those remain later
+substrate obligations.
 
 ## Discipline
 - Work only within the verb, object and boundary of your delegation.
 - Prefer test-first: if tests were authored upstream, make them pass; do not
   weaken a test to make it green.
+- Verify via `bin/gleipnir-sandbox test` (in-container, with coverage). Report
+  both the pass count and the line+branch coverage%.
 - You cannot commit or push. When work is ready, report back; the orchestrator
   routes the git stage to `git-ops`.
 - Never attempt to edit anything under `.gleipnir/` — that is enforcement

@@ -53,6 +53,7 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
   logs/                <- Tier 1 RETRIEVED: session-observer / G-4 bus output
   keys/                <- Tier 3 POLICY: G-3 key + integrity digests [S-2]
   var/tmp/             <- Tier 0 TEMPORARY: scratch (gitignored)
+  var/run/             <- framework-process runtime scratch (sandbox cov/cache; gitignored)
   plans/               <- Tier 0 TEMPORARY: session artifacts (disposable)
     README.md          <- lifecycle policy
 ```
@@ -109,7 +110,7 @@ enforcement.
 | Guard | What step 0 provides | Not yet real (later step) |
 |---|---|---|
 | G-1 (unreachable guards) | Agents deny edits under `.gleipnir/` | S-2 substrate boundary; terminal closure + S-3 preflight |
-| G-2 (capability removal) | `bash: deny` + allowlist; git isolated to `git-ops` | Broker as separate process/IPC; **E-1 argument policy**; credential isolation |
+| G-2 (capability removal) | `bash: deny` + allowlist; git isolated to `git-ops`; **S-2 sandbox built** — `gleipnir-code` build/test runs in an ephemeral container (`bin/gleipnir-sandbox`, `--network=none`, ro source), not the host (T-6 blast radius real) | Broker as separate process/IPC; **E-1 argument policy**; credential isolation; ro-mount of `.gleipnir/` |
 | G-3 (unforgeable evidence) | **G-3.1 built**: keyed HMAC marker (`src/gleipnir/verify/`), tests green; orchestrator instructed not to self-declare done | G-3.1 key *boundary-enforcement* (needs S-2 mount + S-3 preflight); G-3.2 engine attestation binding (needs G-5) |
 | G-4 (unblindable senses) | — | Typed event bus, ledger, observer, novelty triage |
 | G-5 (deterministic orchestration) | `orchestrator` prompt stand-in + stage-role map; engine stub + tests written (test-first) | Engine implementation; G-3.2 attestation edge |
