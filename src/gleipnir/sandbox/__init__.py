@@ -21,14 +21,12 @@ from .runtime import (
     MachineNotReadyError,
     NoRuntimeError,
     SandboxError,
-    build_pytest_argv,
     build_run_argv,
     detect_cri,
     ensure_machine_ready,
     image_available,
     needs_machine_management,
     parse_machine_list,
-    prepare_pytest_run,
     prepare_sandbox_run,
 )
 
@@ -40,13 +38,11 @@ __all__ = [
     "MachineNotReadyError",
     "NoRuntimeError",
     "SandboxError",
-    "build_pytest_argv",
     "build_run_argv",
     "detect_cri",
     "ensure_machine_ready",
     "image_available",
     "needs_machine_management",
     "parse_machine_list",
-    "prepare_pytest_run",
     "prepare_sandbox_run",
 ]

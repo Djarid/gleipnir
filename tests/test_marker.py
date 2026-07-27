@@ -187,3 +187,45 @@ def test_malformed_marker_json_raises():
 
     with pytest.raises(MarkerError):
         Marker.from_json("{not json")
+
+
+# ---------------------------------------------------------------------------
+# DEBT: cover the remaining fail-closed / edge branches in marker.py
+# ---------------------------------------------------------------------------
+
+def test_marker_from_json_missing_fields_raises():
+    """Valid JSON but missing required fields -> MarkerError (not KeyError)."""
+    from gleipnir.verify import MarkerError
+
+    with pytest.raises(MarkerError):
+        Marker.from_json('{"version": 1}')  # missing tree_hash/minted_at/mac
+
+
+def test_load_key_unreadable_path_raises(tmp_path: Path):
+    """A key path that exists as a directory (unreadable as bytes) -> OSError
+    -> KeyUnavailable (fail-closed), not a raw OSError."""
+    from gleipnir.verify import KeyUnavailable
+
+    d = tmp_path / "not-a-key-file"
+    d.mkdir()
+    with pytest.raises(KeyUnavailable):
+        load_key(d)
+
+
+def test_compute_tree_hash_include_is_a_file(tmp_path: Path):
+    """An `include` entry that is a file (not a dir) is folded in directly."""
+    (tmp_path / "solo.py").write_text("x = 1\n")
+    h = compute_tree_hash(tmp_path, include=("solo.py",))
+    assert isinstance(h, str) and len(h) == 64  # sha256 hex
+
+
+def test_compute_tree_hash_extra_file_outside_root(tmp_path: Path):
+    """An extra_file resolving outside the root uses the as_posix() fallback
+    (the relative_to ValueError branch) rather than crashing."""
+    outside = tmp_path.parent / "outside.txt"
+    outside.write_text("data\n")
+    try:
+        h = compute_tree_hash(tmp_path, include=(), extra_files=("../outside.txt",))
+        assert isinstance(h, str) and len(h) == 64
+    finally:
+        outside.unlink()

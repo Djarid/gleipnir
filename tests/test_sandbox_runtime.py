@@ -250,34 +250,6 @@ def test_build_run_argv_appends_cmd_after_image(repo_and_scratch):
     assert argv[image_idx + 1:] == ["python", "-m", "pytest", "-q"]
 
 
-def test_build_pytest_argv_uses_no_cacheprovider(repo_and_scratch):
-    repo, scratch = repo_and_scratch
-    argv = runtime.build_pytest_argv(
-        "podman", repo_root=repo, scratch_dir=scratch, pytest_args=("-q",)
-    )
-    assert "-p" in argv
-    assert "no:cacheprovider" in argv
-    assert argv[argv.index("-p") + 1] == "no:cacheprovider"
-    assert "-q" in argv
-
-
-def test_build_pytest_argv_full_shape_matches_plan(repo_and_scratch):
-    repo, scratch = repo_and_scratch
-    argv = runtime.build_pytest_argv(
-        "podman", repo_root=repo, scratch_dir=scratch, pytest_args=("-q",)
-    )
-    expected = [
-        "podman", "run", "--rm", "--network=none",
-        "-v", f"{repo.resolve()}:/work:ro",
-        "-v", f"{scratch.resolve()}:/work/.scratch:rw",
-        "-w", "/work",
-        "-e", "PYTHONDONTWRITEBYTECODE=1",
-        runtime.IMAGE,
-        "python", "-m", "pytest", "-p", "no:cacheprovider", "-q",
-    ]
-    assert argv == expected
-
-
 # ---------------------------------------------------------------------------
 # ensure_machine_ready (thin orchestration; subprocess.run faked)
 # ---------------------------------------------------------------------------
@@ -511,17 +483,47 @@ def test_prepare_sandbox_run_returns_valid_argv_on_success(monkeypatch, repo_and
     assert "--network=none" in argv
 
 
-def test_prepare_pytest_run_builds_expected_argv(monkeypatch, repo_and_scratch):
-    repo, scratch = repo_and_scratch
-    monkeypatch.setattr(
-        runtime.shutil, "which",
-        lambda name: "/usr/bin/podman" if name == "podman" else None,
-    )
-    monkeypatch.setattr(
-        runtime.subprocess, "run",
-        lambda *a, **k: _fake_completed(returncode=0),
-    )
-    argv = runtime.prepare_pytest_run(
-        repo_root=repo, scratch_dir=scratch, pytest_args=("-q",), platform_name="Linux"
-    )
-    assert argv[-6:] == ["python", "-m", "pytest", "-p", "no:cacheprovider", "-q"]
+# ---------------------------------------------------------------------------
+# DEBT-2: previously-uncovered fail-closed branches
+# ---------------------------------------------------------------------------
+
+def test_run_machine_subcommand_oserror_is_actionable(monkeypatch):
+    """subprocess.run raising OSError (e.g. podman binary vanished mid-run)
+    must become an actionable MachineNotReadyError, never the raw OSError."""
+
+    def raise_oserror(*a, **k):
+        raise OSError("boom: exec format error")
+
+    monkeypatch.setattr(runtime.subprocess, "run", raise_oserror)
+    with pytest.raises(runtime.MachineNotReadyError) as exc:
+        runtime._run_machine_subcommand("start", "podman machine start")
+    # actionable: names the command to run manually
+    assert "podman machine start" in str(exc.value)
+
+
+def test_ensure_machine_ready_raises_if_recheck_still_not_running(monkeypatch):
+    """init/start report success (returncode 0) but the recheck still shows
+    the machine stopped -> MachineNotReadyError (the flaky-start race)."""
+
+    stopped_json = json.dumps([{"Name": "podman-machine-default", "Running": False}])
+
+    def fake_run(argv, **kwargs):
+        if argv[:3] == ["podman", "machine", "list"]:
+            # both the initial decision and the recheck see a stopped machine
+            return _fake_completed(stdout=stopped_json)
+        # `podman machine start` "succeeds"
+        return _fake_completed(returncode=0)
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    with pytest.raises(runtime.MachineNotReadyError) as exc:
+        runtime.ensure_machine_ready(cri="podman", platform_name="Darwin")
+    assert "did not report Running:true" in str(exc.value)
+
+
+def test_parse_machine_list_non_dict_entry_is_start(monkeypatch):
+    """A JSON list whose entries are not dicts (unexpected shape) is treated
+    fail-closed as not-ready/action=start, never crashes on .get()."""
+
+    decision = runtime.parse_machine_list(json.dumps([123, "not-a-dict"]))
+    assert decision.ready is False
+    assert decision.action == "start"

@@ -28,7 +28,7 @@ Spec (`.gleipnir/plans/s2-sandbox.md`, Trace item (b), Link 5, Assemble steps
     build capability every time it runs a test.
 
 All decision logic (`detect_cri`, `parse_machine_list`,
-`needs_machine_management`, `build_run_argv`, `build_pytest_argv`) is pure and
+`needs_machine_management`, `build_run_argv`) is pure and
 unit-testable without a real container runtime. `ensure_machine_ready` and
 `image_available` are the thin edges that call `subprocess.run`; tests fake
 that call rather than requiring podman/docker to be installed.
@@ -323,27 +323,6 @@ def build_run_argv(
     return argv
 
 
-def build_pytest_argv(
-    cri: str,
-    *,
-    repo_root: str | Path,
-    scratch_dir: str | Path,
-    image: str = IMAGE,
-    pytest_args: Sequence[str] = ("-q",),
-) -> list[str]:
-    """Build the argv to run the whole suite inside the sandbox.
-
-    Always includes `-p no:cacheprovider` (probe: this, plus
-    `PYTHONDONTWRITEBYTECODE=1` from `build_run_argv`, gives a clean run with
-    no `PytestCacheWarning` from the ro source mount).
-    """
-
-    cmd = ["python", "-m", "pytest", "-p", "no:cacheprovider", *pytest_args]
-    return build_run_argv(
-        cri, repo_root=repo_root, scratch_dir=scratch_dir, cmd=cmd, image=image
-    )
-
-
 # ---------------------------------------------------------------------------
 # Image availability (thin edge; never builds)
 # ---------------------------------------------------------------------------
@@ -422,24 +401,4 @@ def prepare_sandbox_run(
         cmd=list(cmd),
         image=image,
         extra_env=extra_env,
-    )
-
-
-def prepare_pytest_run(
-    *,
-    repo_root: str | Path,
-    scratch_dir: str | Path,
-    image: str = IMAGE,
-    pytest_args: Sequence[str] = ("-q",),
-    platform_name: str | None = None,
-) -> list[str]:
-    """`prepare_sandbox_run`, specialized to a full-suite pytest invocation."""
-
-    cmd = ["python", "-m", "pytest", "-p", "no:cacheprovider", *pytest_args]
-    return prepare_sandbox_run(
-        cmd,
-        repo_root=repo_root,
-        scratch_dir=scratch_dir,
-        image=image,
-        platform_name=platform_name,
     )
