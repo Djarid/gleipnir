@@ -49,7 +49,7 @@ configuration.
 
 | Artifact | Path | Kind |
 |---|---|---|
-| Spec (canonical) | `gleipnir_specification_v0_3_9.md` | doc |
+| Spec (canonical) | `gleipnir_specification_v0_3_10.md` | doc |
 | Roster | `.gleipnir/agents/*.md` | config (enforcement-bearing) |
 | Methodology | `.gleipnir/skills/{gotcha,atlas}/SKILL.md` | content |
 | Stage-to-role map | `.gleipnir/stage-role-map.md` | config |
