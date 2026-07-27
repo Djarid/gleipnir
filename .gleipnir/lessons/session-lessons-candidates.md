@@ -77,6 +77,76 @@ agent action (bind it) or an operator/human action outside the framework
 (out of scope by design). The framework binds agents acting within it; it makes
 no claim on the operator's choices. (Now in the spec's Part 0 scope clause.)
 
+## L-C6 — A subagent's `question` cannot reach the operator; human-decision gates must live at the orchestrator
+
+**Observed (this session):** the decision-surfacing gate we built to fix
+"material decisions never reach the operator" had that exact bug INSIDE it.
+`gleipnir-brainstorm` is a subagent; its `question` tool surfaces only within
+its own sub-session, never to the operator. So it "converged with itself" and
+reported a decision the operator never made — self-attestation, the precise
+failure the framework exists to prevent, appearing in the human-decision gate.
+If trusted, a Tier-3 durable decision would have enshrined a choice the human
+never took.
+
+**Proposed lesson:** only a primary agent (the orchestrator) can reach the
+operator; subagents cannot. Human-decision gates must therefore be surfaced BY
+the orchestrator, with subagents producing ANALYSIS the orchestrator surfaces —
+never a subagent claiming a convergence it structurally cannot obtain. Fixed
+structurally in commit 634a81c: convergence is orchestrator-surfaced and the
+brainstorm subagent's `question` is denied by capability (not merely
+instruction).
+
+## L-C7 — The review gates catch latent defects that no author and no plan caught
+
+**Observed (this session):** the spec-review and quality gates repeatedly caught
+real defects nothing upstream did — a vanity-metric framing (spec-review on the
+ledger), a latent `ESCALATED`-index crash before a line of code was written
+(spec-review on the engine), and most strikingly a CARDINAL false-CLOSED plus
+TWO residual variants of it in the G-1 boundary preflight (three quality
+rounds), each a genuine way the guard could falsely report "closed."
+
+**Proposed lesson:** for a guard whose failure mode is a false SUCCESS (a false
+"closed", a fabricated metric, a "passed" that didn't), adversarial multi-round
+review is not overhead — it is the mechanism that finds the false-success paths,
+because they are invisible to a green test count. Weight review effort by blast
+radius: security/evidence boundaries warrant multiple adversarial rounds.
+
+## L-C8 — A reviewer must refuse to fabricate evidence it cannot obtain
+
+**Observed (this session):** asked to run `make test` and report the result, the
+quality-reviewer correctly REFUSED — its own permission floor is `bash: deny` —
+rather than invent a pass/coverage number, and routed execution to the role
+holding the `bin/gleipnir-sandbox test` grant, requiring the raw output be
+attached before sign-off. Separately, a `gleipnir-plan` subagent refused a write
+task routed to it above its tier rather than fabricate a persistence it could
+not perform.
+
+**Proposed lesson:** a reviewer that fabricates a "tests pass" it did not
+observe — or an agent that reports a write it did not perform — is the exact
+false-positive the guard exists to prevent. Verification evidence must come from
+the capability holder and be attached; an agent without the capability reports
+that honestly rather than guessing. Anti-self-attestation applied to the guards
+themselves.
+
+## L-C9 — Sequencing/action separation is real, and enforced by tier, not honour
+
+**Observed (this session):** the orchestrator role must delegate action, not
+perform it (it holds no git/edit/bash) — fixes go to `gleipnir-code`, commits to
+`git-ops`, each within capability, and the git holder flagged an unexpected
+untracked file rather than silently staging it. Separately, routing a Tier-2/
+Tier-3 WRITE to a roster subagent failed by capability: no roster agent can
+write `lessons/` or `decisions/`; only the operator's built-in escape-hatch
+agent (running as the operator, outside the framework floor) can. Two roster
+agents in a row correctly refused writes above their tier.
+
+**Proposed lesson:** the tier boundary is structural, not advisory — the writer
+of each tier is fixed (Tier-0 bounded agents; Tier-2 review pipeline; Tier-3
+operator only), and an agent asked to write above its tier refuses by absence of
+capability. The sequencing role must not hold action capabilities; the escape
+hatch that writes POLICY is the operator's built-in agent, never a roster role.
+This is G-5's separation-of-sequencing-from-action and G-6's memory-tier writers
+confirmed by the runtime refusing the wrong-writer path.
+
 ---
 
 ## Note on placement
