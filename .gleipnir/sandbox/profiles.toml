@@ -1,0 +1,26 @@
+# .gleipnir/sandbox/profiles.toml — LIVE Tier-3 POLICY sandbox profile config.
+#
+# Operator-authored, agent-unwritable toolchain-dispatch config read by the
+# S-2 sandbox CLI (src/gleipnir/sandbox/__main__.py -> profiles.py). Without
+# it, `./bin/gleipnir-sandbox test` fails closed (ProfileError, exit 3) and
+# the framework cannot run its own test suite.
+#
+# `[profile.python]` reproduces gleipnir's own (self-host) pytest + coverage
+# and compileall commands exactly. The CLI resolves `default_profile` (no
+# name override on the agent-facing path), so `default_profile = "python"`
+# routes `test`/`lint` here. Mirrors the proven-correct schema of
+# tests/fixtures/sandbox_profiles.toml's python profile.
+#
+# STRICT IMAGE RULE (profiles.py::_validate_image): image is accepted ONLY as
+# the exact grandfathered literal "gleipnir-sandbox:latest" (the self-host
+# image built from ./Containerfile with pytest/pytest-cov preinstalled) or a
+# "name@sha256:<64 lowercase hex>" digest ref. This profile uses the literal.
+
+default_profile = "python"
+
+[profile.python]
+image = "gleipnir-sandbox:latest"
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider"]
+lint = ["python", "-m", "compileall", "-q", "src"]
+coverage = { args = ["--cov=src/gleipnir", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
+test_selector_prefix = true

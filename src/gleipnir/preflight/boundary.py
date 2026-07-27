@@ -204,6 +204,14 @@ ENFORCEMENT_PATHS: tuple[EnforcementPath, ...] = (
         tolerate_absent=True,
     ),
     EnforcementPath(
+        "sandbox/**",
+        "sandbox",
+        Posture.RO,
+        "the Tier-3 toolchain-dispatch config; the test command it declares "
+        "is the Axiom-1 arbiter, so it must be agent-unwritable",
+        tolerate_absent=False,
+    ),
+    EnforcementPath(
         "AGENTS.md",
         "AGENTS.md",
         Posture.RO,

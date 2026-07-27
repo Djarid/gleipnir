@@ -1,0 +1,29 @@
+# tests/fixtures/sandbox_profiles.toml — TEST-HARNESS-ONLY fixture.
+#
+# Mirrors the schema of the live Tier-3 `.gleipnir/sandbox/profiles.toml`
+# (operator hand-off; see `.gleipnir/plans/language-agnostic-sandbox.md`,
+# §T1). This file is injected IN-PROCESS via `config_root` by the test
+# harness only — it is never read by the production dispatch path, and the
+# agent never writes the live Tier-3 file.
+#
+# `[profile.python]` reproduces today's exact pytest + coverage flags (the
+# Python-regression proof: config-driven == prior hard-wired behaviour).
+# `[profile.node]` proves language-agnostic dispatch (node image + node
+# command selection, faked-exec only this slice — see plan Recommendation).
+
+default_profile = "python"
+
+[profile.python]
+image = "gleipnir-sandbox:latest"
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider"]
+lint = ["python", "-m", "compileall", "-q", "src"]
+coverage = { args = ["--cov=src/gleipnir", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
+test_selector_prefix = true
+
+[profile.node]
+image = "gleipnir-sandbox-node@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+test = ["node", "--test", "tests/test_sequence_gate.mjs"]
+lint = ["node", "--check", "tests/test_sequence_gate.mjs"]
+# D5 honest degradation: no coverage tool wired for node this slice.
+coverage = { unavailable = true, justified = "node built-in coverage deferred; zero-dep .mjs seam only" }
+test_selector_prefix = false

@@ -39,6 +39,11 @@ def config_root(tmp_path: Path) -> Path:
     (root / "keys" / "hmac.key").write_bytes(b"super-secret-key-bytes")
     (root / "plugins").mkdir()
     (root / "plugins" / "sequence-gate.ts").write_text("// gate\n")
+    (root / "sandbox").mkdir()
+    (root / "sandbox" / "profiles.toml").write_text(
+        '# Tier-3 toolchain-dispatch config (fixture)\n'
+        'default_profile = "python"\n'
+    )
     (root / "stage-role-map.md").write_text("# map\n")
     (root / "AGENTS.md").write_text("# agents\n")
     return root
@@ -431,6 +436,52 @@ class TestCollectPathProbes:
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("plugins/**" in r for r in decision.reasons)
 
+    def test_sandbox_present_and_writable_refuses(self, config_root: Path):
+        """The arbiter-cannot-be-neutered proof (Stress-test #1): if the
+        `sandbox/` directory node itself were agent-writable, the whole
+        entry must REFUSE, never CLOSED — the agent must never be able to
+        rewrite the `test` arbiter to a no-op."""
+
+        def write_probe(target: Path, agent_uid: int, agent_gid: int) -> pb.ProbeResult:
+            if target.name == "sandbox":
+                return pb.ProbeResult(pb.ProbeOutcome.WRITE_OK)
+            return pb.ProbeResult(pb.ProbeOutcome.WRITE_DENIED)
+
+        probes = pb.collect_path_probes(
+            config_root,
+            agent_uid=999,
+            agent_gid=999,
+            key_path=_key_path(config_root),
+            write_probe=write_probe,
+            read_probe=_all_denied_read_probe,
+        )
+        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        assert decision.verdict is pb.Verdict.REFUSE
+        assert any("sandbox/**" in r for r in decision.reasons)
+
+    def test_sandbox_profiles_toml_file_writable_inside_denied_dir_refuses(
+        self, config_root: Path
+    ):
+        """BLOCKER-1 applied to `sandbox/**`: the directory node reporting
+        denied must not mask a writable `profiles.toml` file inside it."""
+
+        def write_probe(target: Path, agent_uid: int, agent_gid: int) -> pb.ProbeResult:
+            if target.name == "profiles.toml":
+                return pb.ProbeResult(pb.ProbeOutcome.WRITE_OK)
+            return pb.ProbeResult(pb.ProbeOutcome.WRITE_DENIED)
+
+        probes = pb.collect_path_probes(
+            config_root,
+            agent_uid=999,
+            agent_gid=999,
+            key_path=_key_path(config_root),
+            write_probe=write_probe,
+            read_probe=_all_denied_read_probe,
+        )
+        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        assert decision.verdict is pb.Verdict.REFUSE
+        assert any("profiles.toml" in r for r in decision.reasons)
+
     def test_plugins_absent_dir_is_tolerated_not_a_failure(self, config_root: Path):
         import shutil
 
@@ -461,6 +512,28 @@ class TestCollectPathProbes:
         decision = pb.decide(probes, pb.KeyState.PRESENT)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("missing" in r for r in decision.reasons)
+
+    def test_missing_sandbox_dir_refuses_tolerate_absent_false(self, config_root: Path):
+        """Unlike `plugins/**` (tolerate_absent=True), `sandbox/**` MUST
+        refuse when absent: a missing arbiter-config leaves the Axiom-1
+        `test` arbiter undefined, which is not a closed boundary."""
+        import shutil
+
+        shutil.rmtree(config_root / "sandbox")
+        probes = pb.collect_path_probes(
+            config_root,
+            agent_uid=999,
+            agent_gid=999,
+            key_path=_key_path(config_root),
+            write_probe=_all_denied_write_probe,
+            read_probe=_all_denied_read_probe,
+        )
+        labels = [p.label for p in probes]
+        assert "sandbox/**" in labels
+        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        assert decision.verdict is pb.Verdict.REFUSE
+        assert decision.verdict is not pb.Verdict.CLOSED
+        assert any("sandbox" in r and "missing" in r for r in decision.reasons)
 
     def test_key_path_absent_at_collect_time_is_probe_error_on_keys_path(self, config_root: Path):
         probes = pb.collect_path_probes(
