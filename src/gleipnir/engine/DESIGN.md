@@ -8,7 +8,8 @@ bound to `gleipnir-code` per `.gleipnir/stage-role-map.md`, driven by the
 tests recorded here — test-first, per the discipline this role operates
 under.
 
-Traceability: spec `gleipnir_specification_v0_3_10.md`, section **G-5:
+Traceability: the canonical Gleipnir spec (latest
+`gleipnir_specification_v0_3_*.md`), section **G-5:
 Deterministic orchestration** (states, transitions, loop caps, human gate)
 and **G-3.2** (the gate's attestation-only incoming edge). Consumes the
 G-3.1 verifier's fail-closed posture (`src/gleipnir/verify/marker.py`) as
