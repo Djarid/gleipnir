@@ -38,9 +38,22 @@ from typing import Any, Mapping
 
 from gleipnir.engine import Engine, PipelineState, StepResult, Verdict
 from gleipnir.engine.allow_table import allowed_agents_for
-from gleipnir.engine.bridge import KeyUnavailable, StateMarker, load_key, mint_state
+from gleipnir.engine.bridge import (
+    KeyUnavailable,
+    StateMarker,
+    StateMarkerError,
+    load_key,
+    mint_state,
+    validate_state,
+)
 
-__all__ = ["Driver"]
+__all__ = ["Driver", "BridgeInvalid"]
+
+
+class BridgeInvalid(Exception):
+    """The bridge could not be trusted on resume (missing/corrupt/tampered/
+    stale/unknown-state). Fail-closed: a caller that catches this must NOT
+    proceed as if the pipeline were in any particular state."""
 
 
 def _trivial_completion_judge(
@@ -67,6 +80,59 @@ class Driver:
         self.engine = Engine(pipeline_id)
         self.bridge_path = Path(bridge_path)
         self._key_file = key_file
+
+    @classmethod
+    def resume_from_bridge(
+        cls,
+        pipeline_id: str,
+        bridge_path: str | os.PathLike[str],
+        key_file: str | os.PathLike[str] | None = None,
+        max_age_seconds: int | None = None,
+    ) -> "Driver":
+        """Rehydrate a Driver at the bridge's *current* state — the
+        cross-process path the post-tool hook uses.
+
+        Each opencode hook call is a fresh process, so the canonical pipeline
+        state is the persisted bridge, not an in-memory engine. This reads the
+        bridge, **validates it fail-closed** (key required; MAC + freshness
+        must pass; state must be a known ``PipelineState``), and reconstructs
+        the engine at that state via ``Engine.resume_at``.
+
+        Fail-closed: a missing/corrupt/tampered/stale bridge, an unavailable
+        key, or an unknown state all raise (``KeyUnavailable`` or
+        ``BridgeInvalid``) — a fresh Driver at ``BRAINSTORM`` is **never**
+        silently returned in place of an untrusted bridge (that would be
+        fail-open — resetting the pipeline to the start on any tamper).
+        """
+
+        driver = cls.__new__(cls)
+        driver.bridge_path = Path(bridge_path)
+        driver._key_file = key_file
+
+        key = load_key(key_file)  # KeyUnavailable if absent -> fail-closed
+
+        try:
+            text = driver.bridge_path.read_text()
+        except OSError as exc:
+            raise BridgeInvalid(f"cannot read bridge at {bridge_path}: {exc}") from exc
+        try:
+            marker = StateMarker.from_json(text)
+        except StateMarkerError as exc:
+            raise BridgeInvalid(f"bridge is not a valid marker: {exc}") from exc
+
+        kwargs = {} if max_age_seconds is None else {"max_age_seconds": max_age_seconds}
+        if not validate_state(marker, key, **kwargs):
+            raise BridgeInvalid("bridge failed MAC/freshness validation")
+
+        try:
+            state = PipelineState(marker.pipeline_state)
+        except ValueError as exc:
+            raise BridgeInvalid(
+                f"bridge names an unknown pipeline state {marker.pipeline_state!r}"
+            ) from exc
+
+        driver.engine = Engine.resume_at(pipeline_id, state)
+        return driver
 
     @property
     def state(self) -> PipelineState:

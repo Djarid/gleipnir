@@ -284,11 +284,44 @@ class Engine:
         # one has just been consumed).
         self._human_question_origin: PipelineState | None = None
 
+    @classmethod
+    def resume_at(
+        cls,
+        pipeline_id: str,
+        state: "PipelineState",
+        loop_caps: Mapping["PipelineState", int] | None = None,
+    ) -> "Engine":
+        """Reconstruct an engine positioned at ``state``.
+
+        This is **construction, not a transition** — it exists because a live
+        pipeline outlives any single process (each opencode hook call is a
+        fresh process), so the canonical state is the persisted bridge, and a
+        new process must rehydrate the engine at that state rather than restart
+        at ``BRAINSTORM``. It does not, and must not, become a general state
+        setter: the only ways to *move* the engine remain ``step``,
+        ``answer_human_question`` and ``attempt_gate``. ``state`` must be a
+        real ``PipelineState`` member; anything else is rejected (fail-closed),
+        never coerced.
+
+        Loop-cap counters are reset to 0 on resume — the minimal slice does not
+        persist per-state FAIL counts across processes; the bridge carries only
+        the pipeline state. (A later slice may persist counters if cross-process
+        loop-cap fidelity is required; called out honestly rather than faked.)
+        """
+
+        if not isinstance(state, PipelineState):
+            raise InvalidVerdict(
+                f"resume_at requires a PipelineState, got {state!r}"
+            )
+        engine = cls(pipeline_id, loop_caps=loop_caps)
+        engine._state = state
+        return engine
+
     @property
     def state(self) -> PipelineState:
         """The engine's current state. Read-only from outside; the only
         ways to change it are ``step()``, ``answer_human_question()`` and
-        ``attempt_gate()``."""
+        ``attempt_gate()`` (plus ``resume_at`` construction)."""
 
         return self._state
 

@@ -572,3 +572,16 @@ class TestAttestationGate:
             Attestation(pipeline_id=PIPELINE_ID, status=AttestationStatus.GREEN)
         )
         assert result.state is PipelineState.GATE
+
+
+class TestResumeAt:
+    def test_resume_at_reconstructs_at_given_state(self):
+        engine = Engine.resume_at(PIPELINE_ID, PipelineState.SPEC_REVIEW)
+        assert engine.state is PipelineState.SPEC_REVIEW
+        # and it is a live engine: a PASS advances per the table
+        result = engine.step(make_pass_judge())
+        assert result.state is PipelineState.TEST
+
+    def test_resume_at_rejects_non_pipelinestate(self):
+        with pytest.raises(InvalidVerdict):
+            Engine.resume_at(PIPELINE_ID, "spec_review")  # a string, not the enum

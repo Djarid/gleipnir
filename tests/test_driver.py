@@ -146,3 +146,90 @@ def test_driver_picks_up_key_from_env(bridge_path, key_file, monkeypatch):
     driver = Driver(PIPELINE_ID, bridge_path, key_file=None)
     driver.write_bridge()
     assert bridge_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Resume-from-bridge: each opencode hook call is a fresh process, so the driver
+# must rehydrate the engine at the bridge's CURRENT state rather than always
+# starting at BRAINSTORM. This is the cross-process advance the post-tool hook
+# relies on.
+# ---------------------------------------------------------------------------
+
+
+def test_resume_from_bridge_rehydrates_current_state(bridge_path, key_file):
+    # Process 1: advance brainstorm -> plan -> spec_review, persist.
+    d1 = Driver(PIPELINE_ID, bridge_path, key_file=key_file)
+    d1.write_bridge()
+    d1.advance_on_clean_completion()  # -> plan
+    d1.advance_on_clean_completion()  # -> spec_review
+    assert d1.state is PipelineState.SPEC_REVIEW
+
+    # Process 2 (fresh Driver, as a new hook invocation would be): resume from
+    # the bridge and confirm it is AT spec_review, not brainstorm.
+    d2 = Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
+    assert d2.state is PipelineState.SPEC_REVIEW
+
+
+def test_resume_then_advance_progresses_not_resets(bridge_path, key_file):
+    d1 = Driver(PIPELINE_ID, bridge_path, key_file=key_file)
+    d1.write_bridge()
+    d1.advance_on_clean_completion()  # -> plan
+    assert d1.state is PipelineState.PLAN
+
+    # Fresh process resumes at plan and advances -> spec_review (NOT plan again).
+    d2 = Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
+    result = d2.advance_on_clean_completion()
+    assert result.state is PipelineState.SPEC_REVIEW
+    marker = _read_marker(bridge_path)
+    assert marker.pipeline_state == PipelineState.SPEC_REVIEW.value
+
+
+def test_resume_rejects_tampered_bridge(bridge_path, key_file):
+    d1 = Driver(PIPELINE_ID, bridge_path, key_file=key_file)
+    d1.write_bridge()
+    # Tamper: flip the state, keep the (now-invalid) mac.
+    data = json.loads(bridge_path.read_text())
+    data["pipeline_state"] = "git"
+    bridge_path.write_text(json.dumps(data))
+
+    # Resume must fail closed on an invalid MAC, not trust the forged state.
+    with pytest.raises(Exception):
+        Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
+
+
+def test_resume_without_key_fails_closed(bridge_path, key_file, monkeypatch):
+    d1 = Driver(PIPELINE_ID, bridge_path, key_file=key_file)
+    d1.write_bridge()
+    monkeypatch.delenv("GLEIPNIR_MARKER_KEY_FILE", raising=False)
+    with pytest.raises(KeyUnavailable):
+        Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=None)
+
+
+def test_resume_missing_bridge_fails_closed(bridge_path, key_file):
+    # No bridge file written at all -> BridgeInvalid (never a fresh brainstorm).
+    from gleipnir.engine.driver import BridgeInvalid
+
+    with pytest.raises(BridgeInvalid):
+        Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
+
+
+def test_resume_malformed_marker_fails_closed(bridge_path, key_file):
+    from gleipnir.engine.driver import BridgeInvalid
+
+    bridge_path.parent.mkdir(parents=True, exist_ok=True)
+    bridge_path.write_text("{ not valid json")
+    with pytest.raises(BridgeInvalid):
+        Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
+
+
+def test_resume_unknown_state_fails_closed(bridge_path, key_file):
+    """A genuinely-MAC'd bridge whose state is not a real PipelineState must
+    still fail closed (defence in depth: mint one with a bogus state)."""
+    from gleipnir.engine.driver import BridgeInvalid
+    from gleipnir.engine.bridge import mint_state
+
+    marker = mint_state("not_a_real_state", ["gleipnir-plan"], VERIFIER_KEY)
+    bridge_path.parent.mkdir(parents=True, exist_ok=True)
+    bridge_path.write_text(marker.to_json())
+    with pytest.raises(BridgeInvalid):
+        Driver.resume_from_bridge(PIPELINE_ID, bridge_path, key_file=key_file)
