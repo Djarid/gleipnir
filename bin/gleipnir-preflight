@@ -1,0 +1,21 @@
+#!/bin/sh
+# S-2/G-1 boundary preflight entrypoint shim.
+#
+# OUT-OF-FRAMEWORK: run by the OPERATOR, as the OWNING uid, BEFORE an
+# opencode session starts -- never by an in-framework agent. Deliberately a
+# THIN shim (same shape as bin/gleipnir-sandbox): it does nothing but exec the
+# stdlib-Python CLI in src/gleipnir/preflight. All decision logic lives there
+# and is unit-tested.
+#
+# This script is NOT granted to any agent's allowlist (.gleipnir/agents/*.md)
+# and is not referenced by any agent-reachable tool call -- a guard whose
+# activation is validated by the population it guards is the G-3
+# forgeable-evidence failure applied to activation, which this must avoid.
+#
+# Resolve the repo root from this script's own location so it works
+# regardless of the caller's cwd.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/.." && pwd)
+PYTHONPATH="$repo/src${PYTHONPATH:+:$PYTHONPATH}" \
+  exec "$repo/.venv/bin/python" -m gleipnir.preflight "$@"
