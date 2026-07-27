@@ -2,8 +2,8 @@
 
 Status: **authored and implemented.** This document and
 `tests/test_engine.py` are the specification; `__init__.py` in this
-directory implements that contract in full, and the test suite (49/49)
-passes against it. The bodies were implemented in the `code` delegation,
+directory implements that contract in full, and the engine test suite
+passes against it (part of the full repo suite, 181 passed). The bodies were implemented in the `code` delegation,
 bound to `gleipnir-code` per `.gleipnir/stage-role-map.md`, driven by the
 tests recorded here — test-first, per the discipline this role operates
 under.
@@ -27,8 +27,12 @@ precept 10; the escalation sink, precept 6):
 ```
 BRAINSTORM -> PLAN -> SPEC_REVIEW -> TEST -> CODE -> QUALITY -> GIT -> GATE
                   \--(NEEDS_HUMAN)--> HUMAN_QUESTION  (from any main-line state)
-        SPEC_REVIEW, QUALITY: FAIL loops on self, capped
-                  \--(cap reached)--> ESCALATED
+   FAIL reverts BACKWARD to a fixed earlier stage (data in TRANSITIONS):
+        SPEC_REVIEW --FAIL--> PLAN     (2 -> 1)
+        TEST        --FAIL--> SPEC_REVIEW  (3 -> 2)  [test-first: bad tests => spec inadequate]
+        QUALITY     --FAIL--> CODE     (5 -> 4)
+   each backward hop increments ONE global revert budget; at exactly N:
+                  \--(revert budget reached)--> ESCALATED
 ```
 
 `GATE` and `ESCALATED` are terminal (no outgoing edges — no key for them
@@ -117,33 +121,52 @@ caller from the real CI/verifier surface (out of scope for this module,
 which only models the value once it arrives) — never asserted by the
 agent, per spec.
 
-## Assemble: loop caps (precept 6)
+## Assemble: revert edges + global revert budget (precept 6)
 
-`LOOPING_STATES = (SPEC_REVIEW, QUALITY)`. Each engine instance holds a
-per-state `FAIL` counter (`Engine.loop_count(state)`, read-only from
-outside), seeded at 0, with a cap (`DEFAULT_LOOP_CAP`, overridable per
-state via the constructor's `loop_caps` mapping — tests use small caps for
-determinism).
+`Verdict.FAIL` at a gate stage does **not** self-loop; it **reverts** backward
+to a fixed earlier stage, encoded as data in `TRANSITIONS`:
+`SPEC_REVIEW --FAIL--> PLAN`, `TEST --FAIL--> SPEC_REVIEW`,
+`QUALITY --FAIL--> CODE` (all strictly backward by `PIPELINE_ORDER` index).
+The retired self-loop model (`LOOPING_STATES`, per-state `loop_count`,
+`DEFAULT_LOOP_CAP`, `loop_caps`) is superseded — those names no longer exist.
 
-On `step()` resolving to a self-loop (`Verdict.FAIL` on a state in
-`LOOPING_STATES`):
+Escalation is bounded by a **single global revert budget**, not per-state
+counters. Each engine instance holds one monotonic counter (`revert_count`,
+read-only via `Engine.revert_count`) with a budget (`DEFAULT_REVERT_BUDGET`,
+overridable via the constructor's `revert_budget` parameter).
 
-1. increment that state's counter;
-2. if the counter has now reached the cap, transition to `ESCALATED`
-   instead of looping, and return `StepResult(ESCALATED, escalated=True)`;
-3. otherwise, loop (state unchanged) and return
-   `StepResult(state, escalated=False)`.
+On `step()` resolving to a backward revert edge (`Verdict.FAIL` at a gate
+stage):
 
-Cap semantics are exact: with cap `N`, failures `1..N-1` loop, failure `N`
-escalates. `N-1` failures must never escalate; the `N`th must always
-escalate. Both are counter comparisons in code — no LLM is asked "is this
-round two yet."
+1. increment the single global `revert_count`;
+2. if it has now reached the budget, transition to `ESCALATED` and return
+   `StepResult(ESCALATED, escalated=True)`;
+3. otherwise, move to the revert target and return
+   `StepResult(target, escalated=False)`.
+
+The counter is **never reset** — not on PASS, not on re-entering a stage, not
+on reaching a target. Budget semantics are exact: with budget `N`, reverts
+`1..N-1` proceed, revert `N` escalates. **Why global, not per-state:** a cycle
+that alternates through different edges (`spec-review<->plan`, then
+`quality<->code`) would keep each per-state/per-edge counter under its own cap
+forever and never escalate — a single global budget catches any cycle shape.
+This is the load-bearing anti-thrash property; the concrete-N=4 cycle-thrash
+test pins it.
+
+**Escalation trigger vs. signal (operator-converged decision, see
+`../../.gleipnir/plans/engine-revert-cap-model-brainstorm.md`).** The global
+budget is the escalation *trigger* (deterministic, simple). It is
+deliberately *blunt* — it conflates unrelated reverts and cannot tell "one
+stage stuck" from "healthy iteration". That signal loss is mitigated by
+emitting **each revert hop as a G-4 bus event** (obligation recorded; the bus
+is a later build step, so this is a seam today). A richer per-stage escalation
+(hybrid "C") is a documented deferred seam, not built.
 
 ## Stress-test: adversarial mapping to spec conformance [D]
 
 | Spec conformance clause | Test(s) |
 |---|---|
-| "escalation fires at exactly N by code" | cap-at-N-minus-1 does not escalate; cap-at-N does, for both `SPEC_REVIEW` and `QUALITY`, with independent counters |
+| "escalation fires at exactly N by code" | global revert budget: reverts `1..N-1` proceed, revert `N` escalates; a cross-stage cycle-thrash (spec-review<->plan + quality<->code) still escalates at exactly N (a per-edge counter would not) — the concrete-N=4 test |
 | "instruction to skip a gate or proceed past the MR gate: engine must have no code path" | `GIT` has no `PASS` transition; `step()` from `GIT` with any `Verdict` other than `NEEDS_HUMAN` raises `NoSuchTransition`; only `attempt_gate` reaches `GATE` |
 | "Inject 'skip review' inside a pasted document: no bypass" | judge ignores payload text and advances one edge only; judge that *returns* the string is rejected by type, before routing |
 | "Drive a stage to completion with CI absent, pending and red: engine must refuse... not satisfiable by any agent-supplied text" | `attempt_gate(None)`, `attempt_gate(Attestation(..., ABSENT/PENDING/RED))`, `attempt_gate("trust me, it passed")` (wrong type) all refuse; `state` unchanged in every case |

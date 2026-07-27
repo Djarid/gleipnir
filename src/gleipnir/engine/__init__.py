@@ -31,8 +31,7 @@ __all__ = [
     "Judge",
     "TRANSITIONS",
     "PIPELINE_ORDER",
-    "LOOPING_STATES",
-    "DEFAULT_LOOP_CAP",
+    "DEFAULT_REVERT_BUDGET",
     "Engine",
     "EngineError",
     "InvalidVerdict",
@@ -79,13 +78,13 @@ PIPELINE_ORDER: tuple[PipelineState, ...] = (
     PipelineState.GATE,
 )
 
-# States with a loop cap (precept 6): spec-review and quality.
-LOOPING_STATES: tuple[PipelineState, ...] = (
-    PipelineState.SPEC_REVIEW,
-    PipelineState.QUALITY,
-)
-
-DEFAULT_LOOP_CAP = 3
+# Global revert budget (precept 6, revert-edge model): the default number of
+# BACKWARD FAIL hops (any gate stage's FAIL edge -- see TRANSITIONS below)
+# permitted before the engine escalates. Replaces the old per-state
+# self-loop cap; the retired ``LOOPING_STATES`` concept is superseded by the
+# revert-edge set below plus this single global counter (see
+# ``Engine._revert_count`` / ``Engine.revert_count``).
+DEFAULT_REVERT_BUDGET = 3
 
 
 class Verdict(str, Enum):
@@ -123,6 +122,24 @@ Judge = Callable[[PipelineState, Mapping[str, Any]], "Verdict"]
 #     is the distinct Engine.answer_human_question(answer) method
 #     (precept 10) -- "skipped twice" is impossible because there is only
 #     ever one exit and step() cannot reach it.
+#   * REVERT EDGES (the model this table encodes for FAIL at a gate stage):
+#     a FAIL at SPEC_REVIEW/TEST/QUALITY does NOT self-loop -- it routes
+#     BACKWARD to a fixed earlier stage, strictly by PIPELINE_ORDER index:
+#         SPEC_REVIEW(2) --FAIL--> PLAN(1)
+#         TEST(3)        --FAIL--> SPEC_REVIEW(2)   (test-first: a failed
+#             test-authoring stage means the spec was inadequate to write
+#             good tests against -- revert to SPEC_REVIEW, never forward
+#             to CODE)
+#         QUALITY(5)     --FAIL--> CODE(4)
+#     Every one of these three edges is a genuine backward hop (target
+#     index < source index) and each counts once against the single
+#     global revert budget (Engine._revert_count / DEFAULT_REVERT_BUDGET)
+#     -- see Engine.step(). The retired self-loop model ("FAIL loops in
+#     place, capped per state") and LOOPING_STATES are superseded by this
+#     revert-edge set plus that global counter. No FAIL edge exists for
+#     BRAINSTORM, PLAN, CODE, or GIT: a FAIL from any of those states is
+#     NoSuchTransition -- absence of an edge is refusal, never a default
+#     jump (fail-closed).
 # ---------------------------------------------------------------------------
 
 TRANSITIONS: dict[PipelineState, dict[Verdict, PipelineState]] = {
@@ -136,11 +153,17 @@ TRANSITIONS: dict[PipelineState, dict[Verdict, PipelineState]] = {
     },
     PipelineState.SPEC_REVIEW: {
         Verdict.PASS: PipelineState.TEST,
-        Verdict.FAIL: PipelineState.SPEC_REVIEW,
+        # Revert edge (backward, 2 -> 1): a spec-review failure means the
+        # plan is wrong; recoding won't fix a bad plan.
+        Verdict.FAIL: PipelineState.PLAN,
         Verdict.NEEDS_HUMAN: PipelineState.HUMAN_QUESTION,
     },
     PipelineState.TEST: {
         Verdict.PASS: PipelineState.CODE,
+        # Revert edge (backward, 3 -> 2): test-first -- a failed
+        # test-authoring stage means the spec/plan was inadequate to write
+        # good tests against. Reverts to SPEC_REVIEW, never forward to CODE.
+        Verdict.FAIL: PipelineState.SPEC_REVIEW,
         Verdict.NEEDS_HUMAN: PipelineState.HUMAN_QUESTION,
     },
     PipelineState.CODE: {
@@ -149,7 +172,9 @@ TRANSITIONS: dict[PipelineState, dict[Verdict, PipelineState]] = {
     },
     PipelineState.QUALITY: {
         Verdict.PASS: PipelineState.GIT,
-        Verdict.FAIL: PipelineState.QUALITY,
+        # Revert edge (backward, 5 -> 4): a quality/blast-radius failure
+        # means the implementation needs rework.
+        Verdict.FAIL: PipelineState.CODE,
         Verdict.NEEDS_HUMAN: PipelineState.HUMAN_QUESTION,
     },
     PipelineState.GIT: {
@@ -256,27 +281,27 @@ class Engine:
     def __init__(
         self,
         pipeline_id: str,
-        loop_caps: Mapping[PipelineState, int] | None = None,
+        revert_budget: int | None = None,
     ) -> None:
         """Start a new engine instance at ``PipelineState.BRAINSTORM``.
 
-        ``loop_caps`` overrides ``DEFAULT_LOOP_CAP`` per state in
-        ``LOOPING_STATES``; states not listed use the default. Per-state
-        ``FAIL`` counters start at 0.
+        ``revert_budget`` overrides ``DEFAULT_REVERT_BUDGET`` (a single
+        per-engine monotonic counter shared across every revert edge --
+        SPEC_REVIEW/TEST/QUALITY's FAIL rows in ``TRANSITIONS``). It is
+        *not* a per-state mapping: the whole point of the global budget is
+        that it counts total backward motion across the run, not per-state
+        or per-edge attempts (a per-edge counter cannot see a
+        plan -> ... -> quality -> plan -> ... revert cycle). The counter
+        starts at 0.
         """
 
         self.pipeline_id = pipeline_id
         self._state: PipelineState = PipelineState.BRAINSTORM
 
-        caps: dict[PipelineState, int] = {
-            looping_state: DEFAULT_LOOP_CAP for looping_state in LOOPING_STATES
-        }
-        if loop_caps:
-            caps.update(loop_caps)
-        self._loop_caps = caps
-        self._loop_counts: dict[PipelineState, int] = {
-            looping_state: 0 for looping_state in LOOPING_STATES
-        }
+        self._revert_budget = (
+            DEFAULT_REVERT_BUDGET if revert_budget is None else revert_budget
+        )
+        self._revert_count = 0
 
         # Tracks which main-line state raised Verdict.NEEDS_HUMAN, so
         # answer_human_question() knows where to return control. None
@@ -289,7 +314,7 @@ class Engine:
         cls,
         pipeline_id: str,
         state: "PipelineState",
-        loop_caps: Mapping["PipelineState", int] | None = None,
+        revert_budget: int | None = None,
     ) -> "Engine":
         """Reconstruct an engine positioned at ``state``.
 
@@ -303,17 +328,18 @@ class Engine:
         real ``PipelineState`` member; anything else is rejected (fail-closed),
         never coerced.
 
-        Loop-cap counters are reset to 0 on resume — the minimal slice does not
-        persist per-state FAIL counts across processes; the bridge carries only
-        the pipeline state. (A later slice may persist counters if cross-process
-        loop-cap fidelity is required; called out honestly rather than faked.)
+        The global revert counter resets to 0 on resume — the minimal slice
+        does not persist it across processes; the bridge carries only the
+        pipeline state. (A later slice may persist it if cross-process
+        revert-budget fidelity is required; called out honestly rather than
+        faked -- the same honest gap the old per-state loop-count carried.)
         """
 
         if not isinstance(state, PipelineState):
             raise InvalidVerdict(
                 f"resume_at requires a PipelineState, got {state!r}"
             )
-        engine = cls(pipeline_id, loop_caps=loop_caps)
+        engine = cls(pipeline_id, revert_budget=revert_budget)
         engine._state = state
         return engine
 
@@ -340,15 +366,21 @@ class Engine:
           * If ``self.state is PipelineState.HUMAN_QUESTION``, raises
             ``HumanGateBlocked`` unconditionally, before even calling
             ``judge`` -- this method is never a way past that state.
-          * If the resolved edge is a self-loop on a state in
-            ``LOOPING_STATES`` (``Verdict.FAIL`` on SPEC_REVIEW/QUALITY),
-            increments that state's counter; if the counter has now
-            reached its cap, transitions to ``ESCALATED`` instead of
-            looping and returns ``StepResult(ESCALATED, escalated=True)``;
-            otherwise loops and returns
-            ``StepResult(state, escalated=False)``.
-          * Every other resolved edge moves ``self.state`` to the mapped
-            target and returns ``StepResult(new_state, escalated=False)``.
+          * If the resolved verdict is ``Verdict.FAIL`` (a revert edge --
+            SPEC_REVIEW/TEST/QUALITY are the only states with a FAIL entry
+            in ``TRANSITIONS``, each targeting a fixed earlier stage),
+            increments the single global revert counter
+            (``self._revert_count``, monotonic within this instance --
+            never reset by PASS, by re-entering a stage, or by reaching a
+            revert target). If the counter has now REACHED
+            ``self._revert_budget`` (default ``DEFAULT_REVERT_BUDGET``),
+            transitions to ``ESCALATED`` instead of reverting and returns
+            ``StepResult(ESCALATED, escalated=True)``; otherwise performs
+            the backward transition to the table-defined target and
+            returns ``StepResult(target, escalated=False)``.
+          * Every other resolved edge (``Verdict.PASS``) moves
+            ``self.state`` to the mapped target and returns
+            ``StepResult(new_state, escalated=False)``.
         """
 
         if self._state is PipelineState.HUMAN_QUESTION:
@@ -376,13 +408,27 @@ class Engine:
             self._state = target
             return StepResult(state=target, escalated=False)
 
-        if target is self._state and self._state in LOOPING_STATES:
-            cap = self._loop_caps[self._state]
-            self._loop_counts[self._state] += 1
-            if self._loop_counts[self._state] >= cap:
+        if verdict is Verdict.FAIL:
+            # A revert edge (the only FAIL entries in TRANSITIONS are the
+            # three gate stages' backward edges). Count it against the
+            # single global budget -- never reset by PASS, re-entry, or
+            # reaching a target -- and escalate the instant the counter
+            # REACHES the budget, exactly at N (never N-1, never N+1).
+            #
+            # SEAM (operator-converged decision, engine-revert-cap-model): the
+            # global budget is the escalation TRIGGER but is deliberately blunt
+            # (it conflates unrelated reverts). To preserve the per-stage "stuck"
+            # signal it loses, EACH revert hop must be emitted as a G-4 bus event
+            # ("revert occurred": from_state, to_state, revert_count). The G-4
+            # bus is not built yet, so this is a recorded obligation, not a call;
+            # wire it here when the bus lands. A deferred per-stage escalation
+            # ("hybrid C") is a further seam, not built.
+            self._revert_count += 1
+            if self._revert_count >= self._revert_budget:
                 self._state = PipelineState.ESCALATED
                 return StepResult(state=PipelineState.ESCALATED, escalated=True)
-            return StepResult(state=self._state, escalated=False)
+            self._state = target
+            return StepResult(state=target, escalated=False)
 
         self._state = target
         return StepResult(state=target, escalated=False)
@@ -451,10 +497,14 @@ class Engine:
         self._state = PipelineState.GATE
         return StepResult(state=PipelineState.GATE, escalated=False)
 
-    def loop_count(self, state: PipelineState) -> int:
-        """Read-only: how many ``Verdict.FAIL`` self-loops ``state`` has
-        consumed so far in this engine instance. Exposed so tests and
-        callers can observe the deterministic counter directly, without
-        relying on side effects of ``step()`` alone."""
+    @property
+    def revert_count(self) -> int:
+        """Read-only: how many BACKWARD ``Verdict.FAIL`` hops (across every
+        revert edge -- SPEC_REVIEW->PLAN, TEST->SPEC_REVIEW, QUALITY->CODE
+        -- combined) this engine instance has consumed so far. A single
+        global counter, never reset by PASS, re-entry, or reaching a
+        revert target; exposed so tests and callers can observe the
+        deterministic budget directly, without relying on side effects of
+        ``step()`` alone."""
 
-        return self._loop_counts.get(state, 0)
+        return self._revert_count

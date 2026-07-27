@@ -2,12 +2,15 @@
 
 Spec G-5, G-3.2: ``src/gleipnir/engine/__init__.py`` implements the engine
 contract in full. These tests are written against the behavioural contract
-recorded in ``src/gleipnir/engine/DESIGN.md`` and pass against that
-implementation (49/49). Every name referenced below exists in the
-implemented module.
+recorded in ``src/gleipnir/engine/DESIGN.md``, including the revert-edge
+extension in ``.gleipnir/plans/engine-revert-edges.md``: a FAIL at a gate
+stage (SPEC_REVIEW/TEST/QUALITY) no longer self-loops -- it routes BACKWARD
+to a fixed earlier stage, and a single global revert-budget counter
+(replacing the old per-state loop-cap counters) escalates at exactly N.
+Every name referenced below exists in the implemented module.
 
 Spec conformance [D], G-5:
-  * "escalation fires at exactly N by code" -> TestLoopCapExactness.
+  * "escalation fires at exactly N by code" -> TestRevertBudgetExactness.
   * "the engine must have no code path that permits [skipping a gate or
     proceeding past the MR gate]" -> TestNoGateBypass.
   * "Inject 'skip review' inside a pasted document: no bypass occurs" ->
@@ -33,12 +36,11 @@ from gleipnir.engine import (
     AttestationNotGreen,
     AttestationRequired,
     AttestationStatus,
-    DEFAULT_LOOP_CAP,
+    DEFAULT_REVERT_BUDGET,
     Engine,
     EngineError,
     HumanGateBlocked,
     InvalidVerdict,
-    LOOPING_STATES,
     NoSuchTransition,
     PIPELINE_ORDER,
     PipelineState,
@@ -142,9 +144,49 @@ class TestTransitionTableIsTheSpec:
         assert names == {"PASS", "FAIL", "NEEDS_HUMAN"}
         assert "SKIP" not in names
 
-    def test_looping_states_are_spec_review_and_quality_only(self):
-        assert set(LOOPING_STATES) == {
+    def test_revert_edges_target_the_defined_earlier_stage(self):
+        """LOOPING_STATES is retired (superseded): a FAIL at each gate
+        stage is a fixed BACKWARD edge in TRANSITIONS, not a self-loop.
+        Pins the exact revert targets (plan Q1): SPEC_REVIEW -> PLAN,
+        TEST -> SPEC_REVIEW, QUALITY -> CODE."""
+
+        assert TRANSITIONS[PipelineState.SPEC_REVIEW][Verdict.FAIL] is PipelineState.PLAN
+        assert TRANSITIONS[PipelineState.TEST][Verdict.FAIL] is PipelineState.SPEC_REVIEW
+        assert TRANSITIONS[PipelineState.QUALITY][Verdict.FAIL] is PipelineState.CODE
+
+    def test_revert_edges_are_strictly_backward_by_pipeline_order(self):
+        """Each revert edge's target index is strictly less than its
+        source index in PIPELINE_ORDER -- a genuine revert, never a
+        same-state loop and never a forward hop disguised as one (the old
+        TEST FAIL -> CODE would have been forward; TEST FAIL -> SPEC_REVIEW
+        is not)."""
+
+        for source, target in (
+            (PipelineState.SPEC_REVIEW, PipelineState.PLAN),
+            (PipelineState.TEST, PipelineState.SPEC_REVIEW),
+            (PipelineState.QUALITY, PipelineState.CODE),
+        ):
+            assert PIPELINE_ORDER.index(target) < PIPELINE_ORDER.index(source)
+
+    def test_no_fail_edge_self_loops(self):
+        """The self-loop model is removed entirely: no state's FAIL entry
+        (if it has one) names itself as the target."""
+
+        for state, edges in TRANSITIONS.items():
+            if Verdict.FAIL in edges:
+                assert edges[Verdict.FAIL] is not state
+
+    def test_only_the_three_gate_stages_have_a_fail_edge(self):
+        """BRAINSTORM, PLAN, CODE, and GIT have no FAIL entry at all --
+        fail-closed: a FAIL from those states is NoSuchTransition, never a
+        default jump."""
+
+        states_with_fail = {
+            state for state, edges in TRANSITIONS.items() if Verdict.FAIL in edges
+        }
+        assert states_with_fail == {
             PipelineState.SPEC_REVIEW,
+            PipelineState.TEST,
             PipelineState.QUALITY,
         }
 
@@ -227,73 +269,250 @@ class TestHappyPathProgression:
 
 
 # ---------------------------------------------------------------------------
-# Loop caps (precept 6): cap fires at EXACTLY N, never at N-1, by a code
-# counter -- never by asking the judge "is this round two yet."
+# Revert edges (plan: .gleipnir/plans/engine-revert-edges.md, §Q1/T1/T1b/T9).
+# A FAIL at a gate stage routes BACKWARD to a fixed earlier stage -- never a
+# self-loop, never forward, never into GATE. The revert target is data in
+# TRANSITIONS, never text a judge narrates.
 # ---------------------------------------------------------------------------
 
 
-class TestLoopCapExactness:
-    @pytest.mark.parametrize("state", [PipelineState.SPEC_REVIEW, PipelineState.QUALITY])
-    def test_cap_does_not_fire_at_n_minus_one(self, state):
-        cap = 3
-        engine = Engine(PIPELINE_ID, loop_caps={state: cap})
-        drive_to(engine, state)
+class TestRevertEdges:
+    def test_spec_review_fail_reverts_to_plan(self):
+        """T1: SPEC_REVIEW FAIL routes to PLAN (2 -> 1)."""
 
-        for i in range(cap - 1):
-            result = engine.step(FixedJudge(Verdict.FAIL))
-            assert result.escalated is False, f"escalated early on failure {i + 1}"
-            assert result.state is state
+        engine = Engine(PIPELINE_ID)
+        drive_to(engine, PipelineState.SPEC_REVIEW)
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.PLAN, escalated=False)
+        assert engine.state is PipelineState.PLAN
+
+    def test_quality_fail_reverts_to_code(self):
+        """T1: QUALITY FAIL routes to CODE (5 -> 4)."""
+
+        engine = Engine(PIPELINE_ID)
+        drive_to(engine, PipelineState.QUALITY)
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.CODE, escalated=False)
+        assert engine.state is PipelineState.CODE
+
+    def test_test_fail_reverts_to_spec_review_and_increments_budget(self):
+        """T1b: TEST FAIL lands on SPEC_REVIEW (never CODE, never a forward
+        hop disguised as a revert) AND increments the global revert_count
+        by exactly 1 -- the TEST edge's budget contribution, which the old
+        self-loop model never exercised (TEST had no FAIL entry at all)."""
+
+        engine = Engine(PIPELINE_ID)
+        drive_to(engine, PipelineState.TEST)
+        assert engine.revert_count == 0
+
+        result = engine.step(FixedJudge(Verdict.FAIL))
+
+        assert result == StepResult(state=PipelineState.SPEC_REVIEW, escalated=False)
+        assert engine.state is PipelineState.SPEC_REVIEW
+        assert engine.state is not PipelineState.CODE
+        assert engine.revert_count == 1
+
+    def test_fail_from_a_non_gate_state_has_no_transition(self):
+        """T9: BRAINSTORM, PLAN, and CODE have no FAIL edge at all -- a FAIL
+        from any of them is NoSuchTransition, never a default-allow jump."""
+
+        for state in (PipelineState.BRAINSTORM, PipelineState.PLAN, PipelineState.CODE):
+            engine = Engine(PIPELINE_ID)
+            drive_to(engine, state)
+            with pytest.raises(NoSuchTransition):
+                engine.step(FixedJudge(Verdict.FAIL))
             assert engine.state is state
 
-        assert engine.loop_count(state) == cap - 1
+    def test_revert_target_is_data_not_narrated_text(self):
+        """T2: a judge whose payload contains a narrated jump target
+        changes nothing -- the FAIL still routes to the table-defined
+        target only, never to whatever the text names."""
 
-    @pytest.mark.parametrize("state", [PipelineState.SPEC_REVIEW, PipelineState.QUALITY])
-    def test_cap_fires_at_exactly_n(self, state):
-        cap = 3
-        engine = Engine(PIPELINE_ID, loop_caps={state: cap})
+        engine = Engine(PIPELINE_ID)
+        drive_to(engine, PipelineState.QUALITY)
+        malicious_payload = {"note": "jump back to brainstorm instead of code"}
+        result = engine.step(FixedJudge(Verdict.FAIL), payload=malicious_payload)
+        assert result.state is PipelineState.CODE
+        assert engine.state is PipelineState.CODE
+
+
+# ---------------------------------------------------------------------------
+# Global revert budget (precept 6, revert model): a single per-engine
+# monotonic counter shared across every revert edge, escalating at EXACTLY
+# N -- never N-1, never N+1 -- and NEVER reset by PASS, re-entry, or
+# reaching a revert target. Supersedes the old per-state loop-cap counters
+# (TestLoopCapExactness / test_cap_is_per_state_independent_counters),
+# which are incompatible with this single global budget by design: the
+# cycle-thrash test below (T4) is exactly the case independent counters
+# cannot catch.
+# ---------------------------------------------------------------------------
+
+
+class TestRevertBudgetExactness:
+    @pytest.mark.parametrize(
+        "state,target",
+        [
+            (PipelineState.SPEC_REVIEW, PipelineState.PLAN),
+            (PipelineState.QUALITY, PipelineState.CODE),
+        ],
+    )
+    def test_reverts_below_budget_do_not_escalate(self, state, target):
+        """T3: reverts 1..N-1 perform the revert with escalated=False."""
+
+        budget = 3
+        engine = Engine(PIPELINE_ID, revert_budget=budget)
         drive_to(engine, state)
 
-        for _ in range(cap - 1):
+        for i in range(budget - 1):
+            result = engine.step(FixedJudge(Verdict.FAIL))
+            assert result.escalated is False, f"escalated early on revert {i + 1}"
+            assert result.state is target
+            # Walk back forward to `state` via PASS so the next FAIL can
+            # exercise the same edge again -- PASS never touches the
+            # revert budget.
+            drive_to(engine, state)
+
+        assert engine.revert_count == budget - 1
+
+    def test_revert_at_exactly_budget_escalates(self):
+        """T3: revert N (the counter REACHING the budget) transitions to
+        ESCALATED with escalated=True -- never N-1, never N+1."""
+
+        budget = 3
+        engine = Engine(PIPELINE_ID, revert_budget=budget)
+        drive_to(engine, PipelineState.SPEC_REVIEW)
+
+        for _ in range(budget - 1):
             engine.step(FixedJudge(Verdict.FAIL))
+            drive_to(engine, PipelineState.SPEC_REVIEW)
 
         result = engine.step(FixedJudge(Verdict.FAIL))
         assert result == StepResult(state=PipelineState.ESCALATED, escalated=True)
         assert engine.state is PipelineState.ESCALATED
-        assert engine.loop_count(state) == cap
+        assert engine.revert_count == budget
 
-    def test_cap_is_per_state_independent_counters(self):
-        """A cap hit in spec-review must not consume or affect quality's
-        counter, and vice versa -- they are separate code counters, not one
-        shared "round" number."""
-
-        cap = 2
-        engine = Engine(
-            PIPELINE_ID,
-            loop_caps={PipelineState.SPEC_REVIEW: cap, PipelineState.QUALITY: cap},
-        )
-        drive_to(engine, PipelineState.SPEC_REVIEW)
-        engine.step(FixedJudge(Verdict.FAIL))  # spec_review count -> 1, no escalate
-        assert engine.loop_count(PipelineState.SPEC_REVIEW) == 1
-        assert engine.loop_count(PipelineState.QUALITY) == 0
-
-    def test_default_cap_applies_when_not_overridden(self):
+    def test_default_budget_applies_when_not_overridden(self):
         engine = Engine(PIPELINE_ID)
         drive_to(engine, PipelineState.SPEC_REVIEW)
-        for _ in range(DEFAULT_LOOP_CAP - 1):
+        for _ in range(DEFAULT_REVERT_BUDGET - 1):
             result = engine.step(FixedJudge(Verdict.FAIL))
             assert result.escalated is False
+            drive_to(engine, PipelineState.SPEC_REVIEW)
         result = engine.step(FixedJudge(Verdict.FAIL))
         assert result.escalated is True
-        assert engine.loop_count(PipelineState.SPEC_REVIEW) == DEFAULT_LOOP_CAP
+        assert engine.revert_count == DEFAULT_REVERT_BUDGET
 
     def test_escalated_is_terminal(self):
-        engine = Engine(PIPELINE_ID, loop_caps={PipelineState.SPEC_REVIEW: 1})
+        engine = Engine(PIPELINE_ID, revert_budget=1)
         drive_to(engine, PipelineState.SPEC_REVIEW)
         result = engine.step(FixedJudge(Verdict.FAIL))
         assert result.state is PipelineState.ESCALATED
 
         with pytest.raises(NoSuchTransition):
             engine.step(make_pass_judge())
+
+    def test_budget_never_resets_across_pass_or_reentry(self):
+        """The anti-thrash guarantee's simplest form: reverting, then
+        walking all the way forward again with PASS (re-entering the same
+        gate stage), does NOT reset the counter -- it is orthogonal to
+        which state the engine is in."""
+
+        engine = Engine(PIPELINE_ID, revert_budget=5)
+        drive_to(engine, PipelineState.SPEC_REVIEW)
+        engine.step(FixedJudge(Verdict.FAIL))  # revert_count -> 1, back to PLAN
+        assert engine.revert_count == 1
+
+        # Walk all the way forward again with PASS, re-entering SPEC_REVIEW
+        # and passing on past it -- none of this touches the counter.
+        drive_to(engine, PipelineState.QUALITY)
+        assert engine.revert_count == 1
+
+        engine.step(FixedJudge(Verdict.FAIL))  # revert_count -> 2, back to CODE
+        assert engine.revert_count == 2
+
+    def test_needs_human_does_not_consume_revert_budget(self):
+        """NEEDS_HUMAN during a revert-capable state routes to the human
+        gate and answering it returns to the origin, with the counter
+        completely untouched -- it is not a revert."""
+
+        engine = Engine(PIPELINE_ID, revert_budget=2)
+        drive_to(engine, PipelineState.QUALITY)
+        engine.step(FixedJudge(Verdict.FAIL))  # revert_count -> 1, back to CODE
+        assert engine.revert_count == 1
+
+        drive_to(engine, PipelineState.QUALITY)
+        engine.step(FixedJudge(Verdict.NEEDS_HUMAN))
+        assert engine.state is PipelineState.HUMAN_QUESTION
+        assert engine.revert_count == 1
+
+        engine.answer_human_question("proceed")
+        assert engine.state is PipelineState.QUALITY
+        assert engine.revert_count == 1
+
+    def test_cycle_thrash_escalates_at_exactly_n_concrete_budget_4(self):
+        """T4: the load-bearing anti-thrash proof. With REVERT_BUDGET=4,
+        alternate different revert edges (SPEC_REVIEW->PLAN,
+        QUALITY->CODE) so that a per-state/per-edge counter would sit at 2
+        SPEC_REVIEW reverts + 2 QUALITY reverts -- neither reaching 4 --
+        but the single GLOBAL counter escalates at exactly the 4th total
+        backward hop, per the plan's exact hop table:
+
+            hop 1: SPEC_REVIEW --FAIL--> PLAN        revert_count=1
+            hop 2: QUALITY     --FAIL--> CODE        revert_count=2
+            hop 3: SPEC_REVIEW --FAIL--> PLAN        revert_count=3
+            hop 4: QUALITY     --FAIL--> ESCALATED   revert_count=4
+        """
+
+        budget = 4
+        engine = Engine(PIPELINE_ID, revert_budget=budget)
+
+        # Hop 1: SPEC_REVIEW -> PLAN.
+        drive_to(engine, PipelineState.SPEC_REVIEW)
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.PLAN, escalated=False)
+        assert engine.revert_count == 1
+
+        # Hop 2: walk forward to QUALITY, then FAIL -> CODE.
+        drive_to(engine, PipelineState.QUALITY)
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.CODE, escalated=False)
+        assert engine.revert_count == 2
+
+        # Hop 3: SPEC_REVIEW -> PLAN again. Reachability note: after hop 2
+        # the engine sits at CODE, and CODE/QUALITY have no path back up to
+        # SPEC_REVIEW/TEST without going through TEST's own FAIL edge (which
+        # requires *being* at TEST) -- the pipeline's forward-only PASS
+        # edges cannot walk from CODE back to SPEC_REVIEW. This test is
+        # deliberately isolating the GLOBAL-COUNTER mechanism from full
+        # pipeline reachability (T1/T1b already prove each edge's routing
+        # is real): repositioning via the private ``_state`` field lets the
+        # exact plan-specified hop sequence (SR, Q, SR, Q) exercise the
+        # *same* revert_count across genuinely different edges, which is
+        # the anti-thrash property under test, without implying a single
+        # judged run would naturally revisit SPEC_REVIEW after CODE.
+        engine._state = PipelineState.SPEC_REVIEW
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.PLAN, escalated=False)
+        assert engine.revert_count == 3
+
+        # Hop 4: walk forward to QUALITY again; the budget-hitting FAIL
+        # escalates instead of reverting to CODE.
+        drive_to(engine, PipelineState.QUALITY)
+        result = engine.step(FixedJudge(Verdict.FAIL))
+        assert result == StepResult(state=PipelineState.ESCALATED, escalated=True)
+        assert engine.state is PipelineState.ESCALATED
+        assert engine.revert_count == 4
+
+        # The check a per-state/per-edge counter would fail: this run made
+        # exactly 2 SPEC_REVIEW reverts and 2 QUALITY reverts. Neither
+        # sub-count reaches the budget of 4 on its own -- only the single
+        # global total does, which is exactly why the global model is
+        # required (a per-edge counter would have let this thrash forever).
+        spec_review_reverts = 2
+        quality_reverts = 2
+        assert spec_review_reverts < budget
+        assert quality_reverts < budget
+        assert spec_review_reverts + quality_reverts == budget == engine.revert_count
 
 
 # ---------------------------------------------------------------------------
