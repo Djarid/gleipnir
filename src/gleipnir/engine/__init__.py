@@ -415,14 +415,15 @@ class Engine:
             # reaching a target -- and escalate the instant the counter
             # REACHES the budget, exactly at N (never N-1, never N+1).
             #
-            # SEAM (operator-converged decision, engine-revert-cap-model): the
+            # (operator-converged decision, engine-revert-cap-model): the
             # global budget is the escalation TRIGGER but is deliberately blunt
             # (it conflates unrelated reverts). To preserve the per-stage "stuck"
-            # signal it loses, EACH revert hop must be emitted as a G-4 bus event
-            # ("revert occurred": from_state, to_state, revert_count). The G-4
-            # bus is not built yet, so this is a recorded obligation, not a call;
-            # wire it here when the bus lands. A deferred per-stage escalation
-            # ("hybrid C") is a further seam, not built.
+            # signal it loses, each revert hop is emitted as a G-4 bus event
+            # ("revert occurred": from_state, to_state, revert_count, escalated).
+            # That emission is DISCHARGED by the driver (Driver.advance /
+            # _emit_revert_if_any in engine/driver.py) — NOT here: the engine
+            # stays pure (no I/O, no bus import). Do not wire emit into step().
+            # A deferred per-stage escalation ("hybrid C") is a further seam.
             self._revert_count += 1
             if self._revert_count >= self._revert_budget:
                 self._state = PipelineState.ESCALATED

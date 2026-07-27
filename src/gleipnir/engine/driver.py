@@ -28,6 +28,18 @@ verifier key *before* doing anything else. If the key is unavailable, the
 call raises ``KeyUnavailable`` and neither the bridge file nor (for
 ``advance_on_clean_completion``) the in-memory engine state changes — a
 half-advanced-but-unpublished driver would itself be a fail-open bug.
+
+**G-4 bus wire-in (`.gleipnir/plans/g4-bus-first-slice.md`).** The driver
+optionally owns an ``EventBus`` (constructor-injected; ``None`` = no emit).
+After each ``advance``-driven ``Engine.step``, the driver observes the
+returned ``StepResult`` and — crash-safely, per the plan's §2.4.1
+classification — emits a ``RevertOccurredEvent`` for a genuine backward
+revert or the budget-exhausting escalation hop. This is the discharge of
+the SEAM recorded in ``engine/__init__.py`` (~L418-425): the engine stays
+pure (no bus import, no filesystem/process boundary there); the driver,
+which already performs I/O (bridge writes, key loads), is the emit site.
+Emission is telemetry — it degrades rather than raising (`bus/emit.py`) and
+never alters this module's fail-closed key/bridge ordering.
 """
 
 from __future__ import annotations
@@ -36,7 +48,15 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from gleipnir.engine import Engine, PipelineState, StepResult, Verdict
+from gleipnir.bus import EventBus, EventKind, RevertOccurredEvent
+from gleipnir.engine import (
+    Engine,
+    Judge,
+    PIPELINE_ORDER,
+    PipelineState,
+    StepResult,
+    Verdict,
+)
 from gleipnir.engine.allow_table import allowed_agents_for
 from gleipnir.engine.bridge import (
     KeyUnavailable,
@@ -76,10 +96,14 @@ class Driver:
         pipeline_id: str,
         bridge_path: str | os.PathLike[str],
         key_file: str | os.PathLike[str] | None = None,
+        bus: "EventBus | None" = None,
     ) -> None:
         self.engine = Engine(pipeline_id)
         self.bridge_path = Path(bridge_path)
         self._key_file = key_file
+        # Optional G-4 bus (None-safe: existing construction without a bus
+        # is unchanged). See module docstring "G-4 bus wire-in".
+        self._bus = bus
 
     @classmethod
     def resume_from_bridge(
@@ -88,6 +112,7 @@ class Driver:
         bridge_path: str | os.PathLike[str],
         key_file: str | os.PathLike[str] | None = None,
         max_age_seconds: int | None = None,
+        bus: "EventBus | None" = None,
     ) -> "Driver":
         """Rehydrate a Driver at the bridge's *current* state — the
         cross-process path the post-tool hook uses.
@@ -108,6 +133,9 @@ class Driver:
         driver = cls.__new__(cls)
         driver.bridge_path = Path(bridge_path)
         driver._key_file = key_file
+        # None-safe: a resumed driver may also emit; existing callers pass no
+        # bus and get the same no-emit behaviour as a fresh Driver.
+        driver._bus = bus
 
         key = load_key(key_file)  # KeyUnavailable if absent -> fail-closed
 
@@ -162,24 +190,104 @@ class Driver:
         self.bridge_path.write_text(marker.to_json())
         return marker
 
-    def advance_on_clean_completion(
-        self, minted_at: int | None = None
+    def advance(
+        self,
+        judge: Judge = _trivial_completion_judge,
+        *,
+        minted_at: int | None = None,
+        agent: str | None = None,
+        originating_turn: int = 0,
     ) -> StepResult:
-        """Advance the engine off a mechanically observed clean completion
-        (the trivial PASS judge) and republish the bridge.
+        """Advance the engine one step under ``judge``, republish the bridge,
+        and (if a bus is injected) emit a G-4 ``RevertOccurredEvent`` for a
+        backward revert — including the budget-exhausting hop.
 
         The key is loaded *first*, fail-closed, before ``Engine.step`` is
         called — so a missing key leaves the engine's in-memory state
-        untouched as well as leaving the bridge unwritten. This method is
-        the only place ``Engine.step`` is driven for the minimal slice;
-        richer per-stage verdicts are a later wiring, not a change to this
-        contract.
+        untouched as well as the bridge unwritten.
+
+        Emit classification is crash-safe (plan §2.4.1). ``PIPELINE_ORDER``
+        excludes ``ESCALATED`` and ``HUMAN_QUESTION``, so those are NEVER
+        passed to ``.index()`` — the escalated hop is detected by
+        ``StepResult.escalated`` and the normal-revert branch is guarded by
+        explicit ``in PIPELINE_ORDER`` membership before any index compare.
+        Emission is telemetry: it degrades (never raises) and never blocks the
+        advance (the bridge write above is the authority-bearing act).
         """
 
         # Fail-closed *before* touching engine state: an unpublishable
         # advance must not happen at all, not happen-but-not-be-visible.
         self._load_key()
 
-        result = self.engine.step(_trivial_completion_judge)
+        from_state = self.engine.state
+        result = self.engine.step(judge)
         self.write_bridge(minted_at=minted_at)
+
+        self._emit_revert_if_any(
+            from_state, result, agent=agent, originating_turn=originating_turn
+        )
         return result
+
+    def advance_on_clean_completion(
+        self, minted_at: int | None = None
+    ) -> StepResult:
+        """Thin wrapper over ``advance`` with the trivial PASS judge — the
+        mechanically-observed clean-completion path. Kept for callers/tests
+        that predate the generalized ``advance``."""
+
+        return self.advance(_trivial_completion_judge, minted_at=minted_at)
+
+    def _emit_revert_if_any(
+        self,
+        from_state: PipelineState,
+        result: StepResult,
+        *,
+        agent: str | None,
+        originating_turn: int,
+    ) -> None:
+        """Crash-safe revert classification + emit (plan §2.4.1). No-op when
+        no bus is injected. Never raises (emit degrades on its own)."""
+
+        if self._bus is None:
+            return
+
+        to_state = result.state
+
+        if result.escalated:
+            # (A) The budget-exhausting hop. `to_state` is ESCALATED (excluded
+            # from PIPELINE_ORDER) -> use the explicit constant, never index().
+            # This IS the Nth revert and the most important to log.
+            payload = RevertOccurredEvent(
+                from_state=from_state.value,
+                to_state=PipelineState.ESCALATED.value,
+                revert_count=self.engine.revert_count,
+                escalated=True,
+            )
+        elif (
+            from_state in PIPELINE_ORDER
+            and to_state in PIPELINE_ORDER
+            and PIPELINE_ORDER.index(to_state) < PIPELINE_ORDER.index(from_state)
+        ):
+            # (B) A normal backward revert (FAIL routed to an earlier stage).
+            payload = RevertOccurredEvent(
+                from_state=from_state.value,
+                to_state=to_state.value,
+                revert_count=self.engine.revert_count,
+                escalated=False,
+            )
+        else:
+            # (C) Forward PASS, NEEDS_HUMAN/HUMAN_QUESTION, or any non-revert:
+            # not a revert -> emit nothing. Must not raise (no index() reached
+            # a non-member state, because the (B) guards short-circuit first).
+            return
+
+        self._bus.emit(
+            EventKind.REVERT_OCCURRED,
+            payload,
+            emitter="gleipnir-engine-driver",
+            enforcement_surface="g5-engine",
+            action="revert",
+            agent=agent,
+            originating_turn=originating_turn,
+            artifact_ref=self.engine.pipeline_id,
+        )
