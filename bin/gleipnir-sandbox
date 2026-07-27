@@ -1,0 +1,20 @@
+#!/bin/sh
+# S-2 sandbox entrypoint shim.
+#
+# Deliberately a THIN shim: it does nothing but exec the stdlib-Python CLI in
+# src/gleipnir/sandbox. All decision logic (CRI detection, machine readiness,
+# fail-closed refusals, run-argv construction, coverage flags) lives in that
+# Python module and is unit-tested. Keeping the shim to a single exec means the
+# agent's allowlist can grant exactly `bin/gleipnir-sandbox test|build|lint`
+# with no shell-branching surface for a compound-command bypass (G-2).
+#
+# Resolve the repo root from this script's own location so it works regardless
+# of the caller's cwd.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+repo=$(cd "$here/.." && pwd)
+# The sandbox CLI is part of the (stdlib-only) enforcement core under src/;
+# put it on PYTHONPATH the same way pytest's pythonpath=src does, so the shim
+# works without an editable install.
+PYTHONPATH="$repo/src${PYTHONPATH:+:$PYTHONPATH}" \
+  exec "$repo/.venv/bin/python" -m gleipnir.sandbox "$@"

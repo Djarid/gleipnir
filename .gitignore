@@ -12,3 +12,8 @@ __pycache__/
 # keys/: policy + digest manifests are versioned; real key material never is
 .gleipnir/keys/*.key
 .gleipnir/keys/*.secret
+
+# coverage data + sandbox runtime scratch
+.coverage
+.coverage.*
+.gleipnir/var/run/

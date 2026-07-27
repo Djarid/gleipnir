@@ -280,6 +280,7 @@ def build_run_argv(
     scratch_dir: str | Path,
     cmd: Sequence[str],
     image: str = IMAGE,
+    extra_env: Sequence[tuple[str, str]] = (),
 ) -> list[str]:
     """Build the argv to run `cmd` inside the sandbox. Pure — no subprocess.
 
@@ -287,9 +288,13 @@ def build_run_argv(
       * source repo   -> `:ro` at `/work` (agent-authored tests must not
         mutate the code they test)
       * scratch dir   -> `:rw` at `/work/.scratch`, a *separate* mount from
-        the ro source so pytest's cache/`__pycache__` never touches ro
+        the ro source so pytest's cache/`__pycache__`/coverage data never
+        touches ro
       * `--network=none` -> no egress by default, ever
       * `-w /work`, `PYTHONDONTWRITEBYTECODE=1`
+      * `extra_env` -> additional `-e NAME=VALUE` pairs (e.g. COVERAGE_FILE
+        pointed into the rw scratch mount so coverage's data file is not
+        written to the ro source)
       * never references `.git/`, `.gleipnir/`, or any credential path —
         those are simply absent from this argv by construction
     """
@@ -298,7 +303,7 @@ def build_run_argv(
     scratch_dir = Path(scratch_dir).resolve()
     scratch_target = f"{WORKDIR}/{SCRATCH_SUBPATH}"
 
-    return [
+    argv = [
         cri,
         "run",
         "--rm",
@@ -311,9 +316,11 @@ def build_run_argv(
         WORKDIR,
         "-e",
         "PYTHONDONTWRITEBYTECODE=1",
-        image,
-        *cmd,
     ]
+    for name, value in extra_env:
+        argv += ["-e", f"{name}={value}"]
+    argv += [image, *cmd]
+    return argv
 
 
 def build_pytest_argv(
@@ -373,6 +380,7 @@ def prepare_sandbox_run(
     scratch_dir: str | Path,
     image: str = IMAGE,
     platform_name: str | None = None,
+    extra_env: Sequence[tuple[str, str]] = (),
 ) -> list[str]:
     """Tie detection + readiness + image-check + argv-construction together.
 
@@ -408,7 +416,12 @@ def prepare_sandbox_run(
         )
 
     return build_run_argv(
-        cri, repo_root=repo_root, scratch_dir=scratch_dir, cmd=list(cmd), image=image
+        cri,
+        repo_root=repo_root,
+        scratch_dir=scratch_dir,
+        cmd=list(cmd),
+        image=image,
+        extra_env=extra_env,
     )
 
 
