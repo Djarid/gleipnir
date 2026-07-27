@@ -55,3 +55,123 @@ test("allow-decision matches the bridge's allowed_agents list", () => {
   assert.equal(isDelegationAllowed(genuine, "git-ops"), false)
   assert.equal(isDelegationAllowed(genuine, "gleipnir-code"), false)
 })
+
+
+// ---------------------------------------------------------------------------
+// ARMING (default-OFF). The gate must be a pass-through unless a run is armed
+// (GLEIPNIR_PIPELINE=on AND a bridge exists). These drive the real
+// SequenceGate hook against a temp directory.
+// ---------------------------------------------------------------------------
+
+import { SequenceGate } from "../.gleipnir/plugins/sequence-gate.ts"
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { createHmac } from "node:crypto"
+
+// Local mint mirroring the canonical signing input (the golden tests above
+// prove this matches Python byte-for-byte).
+function mintMarker(key, { state, agents, mintedAt }) {
+  const agentsJoined = [...agents].sort().join("\x1e")
+  const signing = ["1", state, agentsJoined, String(mintedAt)].join("\x1f")
+  const mac = createHmac("sha256", key).update(signing, "utf8").digest("hex")
+  return { version: 1, pipeline_state: state, allowed_agents: agents, minted_at: mintedAt, mac }
+}
+
+function makeRepo({ withBridge, bridgeObj } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "gleipnir-gate-"))
+  if (withBridge) {
+    mkdirSync(join(dir, ".gleipnir", "var", "run"), { recursive: true })
+    writeFileSync(join(dir, ".gleipnir", "var", "run", "pipeline-state.json"), JSON.stringify(bridgeObj))
+  }
+  return dir
+}
+
+async function runBefore(dir, subagent_type) {
+  const hook = (await SequenceGate({ directory: dir }))["tool.execute.before"]
+  await hook({ tool: "task" }, { args: { subagent_type } })
+}
+
+async function withEnv(vars, fn) {
+  const saved = {}
+  for (const [k, v] of Object.entries(vars)) { saved[k] = process.env[k]; if (v === undefined) delete process.env[k]; else process.env[k] = v }
+  try { return await fn() } finally { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v } }
+}
+
+test("UNARMED (no GLEIPNIR_PIPELINE): pass-through — even an out-of-order delegation proceeds", async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const bridge = mintMarker(KEY, { state: "brainstorm", agents: ["gleipnir-brainstorm"], mintedAt: now })
+  const dir = makeRepo({ withBridge: true, bridgeObj: bridge })
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: undefined, GLEIPNIR_MARKER_KEY_FILE: undefined }, async () => {
+      // git-ops would be illegal at brainstorm, but unarmed => pass-through, no throw
+      await runBefore(dir, "git-ops")
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("UNARMED even with a missing bridge: pass-through, NOT fail-closed", async () => {
+  const dir = makeRepo({ withBridge: false })
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: undefined, GLEIPNIR_MARKER_KEY_FILE: undefined }, async () => {
+      await runBefore(dir, "gleipnir-code")  // no bridge, but unarmed => must NOT throw
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("ARMED but no bridge yet: still pass-through (arming requires a run in progress)", async () => {
+  const dir = makeRepo({ withBridge: false })
+  const kf = join(dir, "key"); writeFileSync(kf, KEY)
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: "on", GLEIPNIR_MARKER_KEY_FILE: kf }, async () => {
+      await runBefore(dir, "git-ops")  // armed flag on, but no bridge => not a run => pass-through
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("ARMED + valid bridge: ALLOWS the in-state delegation", async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const bridge = mintMarker(KEY, { state: "brainstorm", agents: ["gleipnir-brainstorm"], mintedAt: now })
+  const dir = makeRepo({ withBridge: true, bridgeObj: bridge })
+  const kf = join(dir, "key"); writeFileSync(kf, KEY)
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: "on", GLEIPNIR_MARKER_KEY_FILE: kf }, async () => {
+      await runBefore(dir, "gleipnir-brainstorm")  // allowed at brainstorm => no throw
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("ARMED + valid bridge: ABORTS an out-of-order delegation", async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const bridge = mintMarker(KEY, { state: "brainstorm", agents: ["gleipnir-brainstorm"], mintedAt: now })
+  const dir = makeRepo({ withBridge: true, bridgeObj: bridge })
+  const kf = join(dir, "key"); writeFileSync(kf, KEY)
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: "on", GLEIPNIR_MARKER_KEY_FILE: kf }, async () => {
+      await assert.rejects(runBefore(dir, "git-ops"))  // illegal at brainstorm => throw
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("ARMED + tampered bridge: ABORTS (fail-closed within a run)", async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const bridge = mintMarker(KEY, { state: "brainstorm", agents: ["gleipnir-brainstorm"], mintedAt: now })
+  bridge.pipeline_state = "git"  // flip state, keep mac
+  const dir = makeRepo({ withBridge: true, bridgeObj: bridge })
+  const kf = join(dir, "key"); writeFileSync(kf, KEY)
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: "on", GLEIPNIR_MARKER_KEY_FILE: kf }, async () => {
+      await assert.rejects(runBefore(dir, "git-ops"))
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test("ARMED + bridge but NO key: ABORTS (fail-closed within a run)", async () => {
+  const now = Math.floor(Date.now() / 1000)
+  const bridge = mintMarker(KEY, { state: "brainstorm", agents: ["gleipnir-brainstorm"], mintedAt: now })
+  const dir = makeRepo({ withBridge: true, bridgeObj: bridge })
+  try {
+    await withEnv({ GLEIPNIR_PIPELINE: "on", GLEIPNIR_MARKER_KEY_FILE: undefined }, async () => {
+      await assert.rejects(runBefore(dir, "gleipnir-brainstorm"))
+    })
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

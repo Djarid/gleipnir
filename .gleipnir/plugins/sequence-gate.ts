@@ -8,7 +8,16 @@
 // agent-unwritable. No roster agent (not even gleipnir-code) may edit it. It is
 // the guard; it must not be reachable by the guarded (Axiom 2 / G-1).
 //
-// WHAT IT DOES
+// DEFAULT-OFF / ARMED-ONLY (read this first). The gate enforces the LINEAR G-5
+// pipeline, which is correct ONLY for a deliberate gated pipeline RUN — not for
+// ordinary/low-autonomy use or framework-construction. Per the
+// configured-optionality decision (operators choose their posture) and the
+// escape-hatch scope clause (a framework you cannot decline is a trap), the
+// gate is OFF BY DEFAULT: unless the operator ARMS a run
+// (GLEIPNIR_PIPELINE=on AND a bridge file exists), this hook is a pure
+// PASS-THROUGH — it never inspects, blocks, or fails closed. See `isArmed`.
+//
+// WHAT IT DOES (only when ARMED)
 //   * pre-tool (`tool.execute.before`): on a `task` delegation, read the
 //     digest-protected bridge file, validate its HMAC + freshness (fail-closed),
 //     then check the dispatched `subagent_type` against the allowed-agents set
@@ -16,9 +25,9 @@
 //     allowed — or ANYTHING is uncertain (missing/corrupt/tampered/stale bridge,
 //     bad key, unknown state) — THROW to abort. opencode never spawns the
 //     subagent.
-//   * post-tool (`tool.execute.after`): on a `task` that returned cleanly,
-//     advance the engine via the Python driver (mechanically observed, non-agent
-//     — the completion signal is the tool returning, never an agent's report).
+//   * post-tool advance (observe clean completion -> Driver advance): NOT YET
+//     BUILT (parked). Today the bridge advances only via an out-of-band write;
+//     the mechanical post-tool advance hook is a later step.
 //
 // CROSS-LANGUAGE MAC CONTRACT (the delicate part, golden-fixture tested):
 //   The bridge marker is minted by Python (src/gleipnir/engine/bridge.py). This
@@ -30,9 +39,11 @@
 //   tests/fixtures/golden_marker.json (+ _tampered) prove this hook validates a
 //   genuine Python-minted marker and rejects a one-byte-tampered one.
 //
-// FAIL-CLOSED: every uncertainty is an abort. There is no allow-by-default path
-// and no host/self-report fallback. Any unhandled error also aborts (see the
-// top-level try/catch in the hook).
+// FAIL-CLOSED (within an armed run): every uncertainty is an abort. There is no
+// allow-by-default path and no host/self-report fallback; any unhandled error
+// also aborts (see the top-level try/catch). NOTE the distinction: "unarmed"
+// means "not gated at all" (pass-through), which is NOT the same as fail-open
+// during a gate — once armed, uncertainty always fails closed.
 //
 // NOT YET CLOSED (honest scope): this enforces AT THE HOOK. The hook file, the
 // key, and the driver source still sit in agent-writable space until the S-2
@@ -40,7 +51,7 @@
 // .gleipnir/plans/engine-wire-in.md and decisions/engine-state-bridge.md.
 
 import { createHmac, timingSafeEqual } from "node:crypto"
-import { readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
 // ---- constants mirrored from the Python side (single source of truth is
@@ -56,6 +67,38 @@ const DEFAULT_MAX_AGE_SECONDS = 3600
 // here it is read from GLEIPNIR_MARKER_KEY_FILE.
 const BRIDGE_REL = ".gleipnir/var/run/pipeline-state.json"
 const KEY_ENV = "GLEIPNIR_MARKER_KEY_FILE"
+
+// ---- ARMING (default-OFF) --------------------------------------------------
+// The gate enforces the LINEAR G-5 pipeline sequence. That is only correct for
+// a deliberate, gated pipeline RUN — not for ordinary/low-autonomy use or
+// framework-construction meta-work. Per the configured-optionality decision
+// (operators choose their posture, L2-L5) and the escape-hatch scope clause (a
+// framework the operator cannot decline is a trap), the gate must be OFF by
+// default and enforce ONLY when explicitly ARMED.
+//
+// Armed = (a) the operator set GLEIPNIR_PIPELINE=on for this session, AND
+//         (b) a bridge file exists (a run is in progress).
+// If NOT armed, this hook is a pure PASS-THROUGH no-op: it never inspects,
+// never blocks, never fails closed — every `task` proceeds untouched, exactly
+// as if the plugin were absent. Simple use is unobstructed.
+//
+// Once ARMED, fail-closed is fully in force WITHIN the run: a missing/corrupt/
+// tampered/stale bridge or bad key aborts (you asked to gate; uncertainty
+// during a gated run is refused). "Unarmed" means "not gated", NOT "fail-open
+// during a gate" — the two are different, and only the former is a pass-through.
+const ARM_ENV = "GLEIPNIR_PIPELINE"
+const ARM_VALUE = "on"
+
+function isArmed(directory: string): boolean {
+  if (process.env[ARM_ENV] !== ARM_VALUE) return false
+  try {
+    // a run is in progress only if the bridge exists; existsSync avoids
+    // throwing here (absence => not armed => pass-through, not fail-closed).
+    return existsSync(join(directory, BRIDGE_REL))
+  } catch {
+    return false
+  }
+}
 
 interface StateMarker {
   version: number
@@ -145,6 +188,13 @@ export const SequenceGate = async ({ directory }: { directory: string }) => {
     ) => {
       // Only gate `task` delegations; other tools are out of this gate's scope.
       if (input.tool !== "task") return
+
+      // DEFAULT-OFF: if the operator has not armed a gated pipeline run, this
+      // hook is a pure pass-through — it never inspects, blocks, or fails
+      // closed. Simple / low-autonomy / construction use is unobstructed, per
+      // the configured-optionality + escape-hatch decisions. Enforcement (incl.
+      // fail-closed) applies ONLY within an armed run.
+      if (!isArmed(directory)) return
 
       try {
         const subagentType = output?.args?.subagent_type
