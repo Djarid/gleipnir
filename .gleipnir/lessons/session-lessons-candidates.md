@@ -147,6 +147,12 @@ hatch that writes POLICY is the operator's built-in agent, never a roster role.
 This is G-5's separation-of-sequencing-from-action and G-6's memory-tier writers
 confirmed by the runtime refusing the wrong-writer path.
 
+## L-C10 — The pipeline needs a reachable Tier-3/operator writer; the orchestrator must diagnose "no reachable writer," never bounce work to the human
+
+**Observed (this session):** a slice legitimately needed a Tier-3 artifact created *within* a pipeline run (a self-host `.gleipnir/sandbox/profiles.toml`, and durable decision records). But the orchestrator's `task` allowlist covered only the seven roster agents, and ALL of them deny Tier-3 `.gleipnir/**` writes by design (G-6). So there was NO actor the orchestrator could reach to write Tier-3 — a structural dead-end. The orchestrator (correctly holding no write/edit/bash of its own — that IS its floor) repeatedly mis-attributed this as "the operator should author it by hand," bouncing the work to the human four times before diagnosing the real gap. The fix was to grant the orchestrator `task: general: allow` (with explicit per-use human permission) so operator/Tier-3 artifacts route to an unbound `/general` worker.
+
+**Proposed lesson:** the orchestrator never writes or executes (that is its correct capability floor); when a task needs work no roster agent can do (notably a Tier-3/operator-authored artifact), the honest move is to delegate to an unbound worker (`/general`, gated by explicit operator permission per use) — NOT to hand the work to the human out of band. A framework whose pipeline has no reachable writer for a tier it legitimately must produce has a capability gap, not a human-labour requirement. Two corollaries observed the same session: (a) the build caught a CIRCULAR DEPENDENCY — the framework's own test entrypoint was made to require a Tier-3 config file that no pipeline actor could create, bricking `make test` until it existed; dogfooding surfaced it before commit. (b) `git-ops`'s allowlist lacks `git diff`/`git log`, so read-only commit inspection isn't possible through the broker — a minor capability gap worth closing.
+
 ---
 
 ## Note on placement
