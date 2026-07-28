@@ -25,6 +25,55 @@
 
   "$schema": "https://opencode.ai/config.json",
 
+  // --------------------------------------------------------------------------
+  // Orchestrator context-length cap (Tier-3 ENFORCEMENT MIRROR).
+  //
+  // SINGLE SOURCE OF TRUTH: .gleipnir/policy/context-cap.jsonc (cap_tokens).
+  // Keep the limit.context below numerically EQUAL to that file's cap_tokens.
+  //
+  // Mechanism: this declares a DISTINCT capped model id under the (globally
+  // defined) aperture-anthropic provider — same underlying model as
+  // anthropic.claude-opus-4-8, differing ONLY by limit.context. ONLY the
+  // orchestrator points its `model:` at this capped id
+  // (.gleipnir/agents/orchestrator.md); every other opus agent keeps the
+  // uncapped anthropic.claude-opus-4-8, so the cap does not leak to
+  // gleipnir-plan / gleipnir-brainstorm (scope = orchestrator only).
+  //
+  // UNSET = NO CAP = MODEL DEFAULT: to remove the artificial constraint, delete
+  // this whole "provider" block AND repoint orchestrator.md `model:` back to
+  // aperture-anthropic/anthropic.claude-opus-4-8. Absence of the override = the
+  // model's default limit (never write limit.context: 0 to mean "unset").
+  //
+  // RESTART-TIME VERIFICATION (spike residual, interactive-session-context-cap-spike.md):
+  // this alias id must resolve to a real served model at the aperture endpoint.
+  // Verify on next opencode start that the orchestrator loads and reports a
+  // 250000 context window while a subagent (e.g. gleipnir-code) reports its
+  // base window. If the endpoint rejects the alias key as an unknown model,
+  // escalate to the reserved Approach-B scoped plugin (do NOT silently adopt).
+  // --------------------------------------------------------------------------
+  "provider": {
+    "aperture-anthropic": {
+      "models": {
+        // Capped alias of claude-opus-4-8 for the orchestrator only.
+        "anthropic.claude-opus-4-8-capped": {
+          "name": "claude-opus-4-8 (capped 250K, orchestrator)",
+          "tool_call": true,
+          "limit": {
+            "context": 250000,
+            // Schema requires both keys. `output` is NOT a functional cap we
+            // care about here (intent is the context cap); it must simply be
+            // present and MATCH the base model so the alias differs from
+            // anthropic.claude-opus-4-8 only by limit.context. 32000 is the
+            // Opus output cap at this Bedrock/Mantle endpoint (per
+            // ../aetos/opencode.json:12, which declares Opus as
+            // limit.context 200000 / output 32000).
+            "output": 32000
+          }
+        }
+      }
+    }
+  },
+
   // The orchestrator is the primary entry point: the G-5-engine stand-in that
   // drives the pipeline and delegates every unit of work to a bounded subagent.
   "default_agent": "orchestrator",

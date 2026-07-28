@@ -8,11 +8,12 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 ## Current state
 
 All six enforcement guards (G-1..G-6) have real, tested first slices, plus a
-language-agnostic sandbox executor and the session-scribe bookkeeping role.
-Latest committed + pushed state is on `origin` (`git@github.com:Djarid/gleipnir.git`,
-branch `main`). Tests as of the language-agnostic-sandbox slice:
-**438 passed / 11 skipped / 93% coverage** (in-sandbox). Working tree was clean
-at HEAD `1c84b35` before this (session-scribe) slice was authored.
+language-agnostic sandbox executor, the session-scribe bookkeeping role, and the
+orchestrator interactive-session context-cap feature. Latest committed + pushed
+state is on `origin` (`git@github.com:Djarid/gleipnir.git`, branch `main`).
+Tests as of the language-agnostic-sandbox slice: **438 passed / 11 skipped / 93%
+coverage** (in-sandbox). Context-cap feature verified Tue 28 Jul 2026 (restart
+stress-test S1/S2 passed; Approach-B escalation not required).
 
 ## Built slices (verified against disk / commits)
 
@@ -36,16 +37,29 @@ at HEAD `1c84b35` before this (session-scribe) slice was authored.
   multi-language targets.
 - **session-scribe** (this slice) — Tier-0-scoped bookkeeping writer + the
   resume mechanism (this file). See `../decisions/session-scribe.md`.
+- **Orchestrator interactive-session context-cap** — Tue 28 Jul 2026.
+  Orchestrator runs on capped model `aperture-anthropic/anthropic.claude-opus-4-8-capped`
+  (limit.context 250000 / output 32000, declared in `opencode.jsonc`);
+  `gleipnir-plan` and `gleipnir-brainstorm` remain uncapped (scope verified, no leak).
+  Single source of truth: `.gleipnir/policy/context-cap.jsonc` (cap_tokens 250000).
+  At-cap compaction rules: `.gleipnir/plugins/compaction-survival.ts` (ported from AETOS).
+  Durable record: `.gleipnir/decisions/context-cap.md` (policy enforced-at-hook, not yet G-1 closed).
+  Operator restart-verified: Stress-test S1/S2 passed; 250000 window confirmed.
+  **Observed seam:** gleipnir-code enforces grant denies ALL `.gleipnir/**` writes
+  (no Tier-0 `var/tmp` carve-out), vs AGENTS.md narrating `var/tmp` as agent-writable —
+  candidate lesson on doc-vs-grant discrepancy.
 
 ## Open threads / next
 
-- **Run the session-scribe end-to-end** once reloaded: orchestrator delegates
-  "record session state" to it (proves the mechanism + closes the L-C10 loop).
-- **Node profile real-run** — build the operator digest-pinned node Containerfile
-  + image, then actually run the node profile → closes the dogfood node
-  cross-lang seam (currently dispatch-proven only).
-- **S-2 activation (operator)** — dedicated agent uid + chmod enforcement subtree
-  OS-ro + G-3 key OS-unreadable + run `bin/gleipnir-preflight` before sessions.
+**Tue 28 Jul 2026 — session-scribe dispatch (L-C10 closure):**
+- Orchestrator sequencing three immediate threads in order:
+  1. **End-to-end session-scribe run** — this delegation (proves the L-C10 loop).
+  2. **Node profile real-run** — build operator digest-pinned node Containerfile + image, run profile → closes dogfood node cross-lang seam (currently dispatch-proven only).
+  3. **S-2 activation (operator)** — dedicated agent uid + chmod OS-ro + G-3 key OS-unreadable + `bin/gleipnir-preflight` before sessions.
+- **NEW brainstorm-stage capability:** Interactive-session context-length cap entering pipeline.
+  - Limit: **250K tokens** (operator-decided surface; interactive-session only).
+  - Scope: primary interactive agents *only* (`/plan`, `/build`, `/orchestrator`).
+  - **NOT per-subagent; NOT the G-4d ledger.**
 
 ## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
 

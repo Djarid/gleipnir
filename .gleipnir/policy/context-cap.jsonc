@@ -1,0 +1,42 @@
+{
+  // ============================================================================
+  // Gleipnir Tier-3 POLICY — Orchestrator context-length cap
+  // ============================================================================
+  //
+  // This is the SINGLE SOURCE OF TRUTH for the orchestrator's context-length cap.
+  // Operator-only (Tier-3 POLICY): no agent may write this file. It records the
+  // operator's chosen cap and documents how to enforce and how to unset it.
+  //
+  // SCOPE: the framework `orchestrator` agent ONLY. Not /plan, not /build, not any
+  // other agent or subagent. All other agents remain UNLIMITED locally (remote
+  // provider limits still apply naturally). See
+  // .gleipnir/plans/interactive-session-context-cap.md (SCOPE decision).
+  //
+  // ----------------------------------------------------------------------------
+  // UNSET = NO CAP = MODEL DEFAULT  (first-class, documented state)
+  // ----------------------------------------------------------------------------
+  // "cap_tokens" below is the arbitrary cap the operator wants. To REMOVE the
+  // artificial constraint entirely, set "cap_tokens" to null (or delete the key)
+  // AND remove the mirrored `limit.context` override from opencode.jsonc (see
+  // "enforcement" note). With the value unset, the orchestrator falls back to its
+  // model's DEFAULT context limit — this is NOT an error and NOT an implicit 0;
+  // "unset" specifically means the override line is ABSENT, never a zero/empty
+  // limit.context. Removing the cap is a legitimate, first-class configuration.
+  //
+  // ----------------------------------------------------------------------------
+  // ENFORCEMENT (how this value takes effect — mirror kept in opencode.jsonc)
+  // ----------------------------------------------------------------------------
+  // opencode reads context windows from `provider.<id>.models.<model-id>.limit.context`,
+  // keyed on MODEL ID (not agent). To scope the cap to the orchestrator alone,
+  // opencode.jsonc declares a DISTINCT capped model id under the aperture-anthropic
+  // provider whose `limit.context` equals `cap_tokens`, and ONLY orchestrator.md
+  // points its `model:` at that capped id. Other opus agents keep the uncapped id.
+  // Keep opencode.jsonc's limit.context numerically EQUAL to cap_tokens here (the
+  // two files are mirrors by convention; the Stress-test verifies they match).
+  //
+  // Rationale: 1M tokens is unnecessary and wasteful; the framework goal is
+  // quality-efficient outcomes per token. 250K is generous headroom for the
+  // orchestrator's sequencing judgment while being 4x smaller than 1M.
+
+  "cap_tokens": 250000
+}
