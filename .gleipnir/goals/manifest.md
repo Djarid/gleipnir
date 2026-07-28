@@ -11,6 +11,7 @@ here under G-5.
 | Plan format | `plan-format.md` | artifact/format |
 | Methodology (ATLAS/GOTCHA ahead of planning) | `methodology.md` | workflow |
 | Brainstorm-first workflow (decision-surfacing / precept-10 convergence gate) | `brainstorm-workflow.md` | workflow |
+| Session resume (orient at session start) | `resume.md` | workflow |
 
 Decision-making during brainstorm/plan uses the K-3 catalogue directly:
 `../skills/decision-frameworks/SKILL.md` (10 frameworks + 12 bias detectors).

@@ -21,6 +21,7 @@ permission:
     git-ops: allow
     project-mgr: allow
     notify: allow
+    session-scribe: allow
 color: primary
 ---
 
