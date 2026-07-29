@@ -45,7 +45,12 @@ converge on the operator here, before the plan.
 2. Load `skill decision-frameworks` — the K-3 catalogue (10 frameworks + 12
    bias detectors + auto-selection + `## Decision Analysis` output).
 3. Load `skill gotcha` for operating discipline.
-4. Read relevant `.gleipnir/decisions/` and any prior `.gleipnir/plans/` brief.
+4. Load `skill tier3-coach` **when the task reveals an enforcement-control gap
+   in a layer the agent cannot write** (Tier-3 config, git hooks, CI, OS,
+   credential store). It turns "a control belongs here but I can't put it here"
+   into a concrete, ready-to-apply proposal handed to the operator — never an
+   implementation, never routed into a reachable layer to dodge the handoff.
+5. Read relevant `.gleipnir/decisions/` and any prior `.gleipnir/plans/` brief.
 
 ## Workflow (the 4 phases)
 

@@ -38,5 +38,10 @@
   // quality-efficient outcomes per token. 250K is generous headroom for the
   // orchestrator's sequencing judgment while being 4x smaller than 1M.
 
-  "cap_tokens": 250000
+  // CURRENT STATE: UNSET (null) — operator switched the orchestrator to plain
+  // (uncapped) Sonnet 5 and removed the capped-alias provider block from
+  // opencode.jsonc. This exercises the documented "unset = no cap = model
+  // default" path above. To re-apply a cap: set cap_tokens to a number AND
+  // re-add the mirrored capped alias + limit.context override in opencode.jsonc.
+  "cap_tokens": null
 }

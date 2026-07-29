@@ -67,11 +67,33 @@ build finding — the self-host test path required a not-yet-authored Tier-3
 `profiles.toml` (a circular dependency bricking `make test`) — was resolved by
 authoring the live `.gleipnir/sandbox/profiles.toml`.
 
+## Node profile REAL RUN — CLOSED (this session)
+
+No longer dispatch-proven only; run for real, end-to-end, in the bounded
+container:
+- **Image:** `Containerfile.node` (`FROM node:22-slim`, digest-pinned), built to
+  `localhost/gleipnir-sandbox-node`.
+- **Live profile:** `[profile.node]` in `.gleipnir/sandbox/profiles.toml`,
+  digest-pinned, `--experimental-strip-types` (the .mjs imports a `.ts`; node
+  22.23.1 in-image). `default_profile` left `"python"` — self-host untouched.
+- **Result:** `tests/test_sequence_gate.mjs` — **16 passed, exit 0**, under
+  `--network=none`, INCLUDING the dogfood block (live-Python-Driver-minted PLAN
+  bridge validated byte-for-byte by the TS/JS hook). Python↔JS HMAC contract now
+  agent-verified. No regression (python self-host still green).
+
+## Broker profile — added (broker-MCP session)
+
+A third live profile, `[profile.broker]`, runs the broker MCP servers' test
+suite (`tests/test_broker_*.py`) in a dedicated image `gleipnir-sandbox-broker`
+(digest-pinned; `./Containerfile.broker` = `python:3.12-slim` + pytest/pytest-cov
++ `mcp>=1.0,<2`). Separate image (not the main one) so the MCP SDK's large
+transitive tree (pydantic/starlette/uvicorn/cryptography/httpx) is isolated to
+broker testing; the lean self-host image is unchanged, `default_profile` stays
+`python`. A `conftest.py` `collect_ignore` skips the mcp-dependent
+`test_broker_tool_surface.py` under the python profile so the two don't collide.
+
 ## Known not-yet-closed / seams
 
-- The node profile's REAL run (needs an operator-built, digest-pinned node
-  Containerfile + image) — until then the node profile is dispatch-proven only,
-  and the dogfood's node cross-language block remains not-agent-run.
 - Rust/C/C++ profiles + the general offline-deps/fetch-then-seal decision.
 - A future target-`build` verb.
 - The S-2 mount + terminal closure that makes `.gleipnir/` structurally (not just

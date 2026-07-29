@@ -9,6 +9,24 @@ build-mode escape hatch (Tier-3). Plan of record:
 `../plans/interactive-session-context-cap-brainstorm.md`; spike:
 `../plans/interactive-session-context-cap-spike.md`.
 
+## UPDATE — cap UNSET, orchestrator moved to plain Sonnet 5 (later, same session)
+
+The operator subsequently switched the orchestrator model to
+`aperture-anthropic/anthropic.claude-sonnet-5` and **dropped the cap**,
+deliberately exercising the "unset = no cap = model default" path this feature
+was built to support:
+
+- `orchestrator.md` `model:` → plain `anthropic.claude-sonnet-5` (no capped alias).
+- `opencode.jsonc` — the capped-alias `provider` block **removed**; its absence
+  IS the unset state (never `limit.context: 0`).
+- `.gleipnir/policy/context-cap.jsonc` — `cap_tokens` set to `null`.
+- The `compaction-survival.ts` plugin + the orchestrator's `compaction_survival:`
+  pinned rules **remain** — they preserve critical context across ANY compaction
+  (which now fires at Sonnet 5's default window), independent of any cap.
+
+The capped-alias mechanism below is retained as the documented record of HOW to
+re-apply a cap; it is simply not active now.
+
 ## Why
 
 1M-token context windows are unnecessary and wasteful of tokens; the framework

@@ -45,6 +45,47 @@ core's needs (G-3.1 already proves this).
 - Dev/test tooling (not shipped, not in the trusted runtime surface): allowed,
   declared under `[project.optional-dependencies]`, pinned.
 
+## Amendment — the broker/integration layer is NOT enforcement core
+
+**Status:** decided (broker-MCP session). Plan of record:
+`../plans/broker-mcp.md`; brief: `../plans/broker-mcp-brainstorm.md` (Option B).
+
+The stdlib-only rule scopes to the **enforcement core** (G-3.1 verifier, G-5
+engine, G-4 bus/ledger, memory pipeline) and already excludes the TS hook layer.
+This amendment names a third category:
+
+- **Broker / integration layer** (`src/gleipnir/broker/**`) — the git and PM
+  broker MCP servers (spec T-2 / G-2 single-holder, E-1). Not enforcement core;
+  they hold no G-3/G-5/G-4/memory logic. They MAY carry **declared, justified**
+  runtime deps, per the policy above.
+
+**Each broker is its own independently-versioned component (operator decision).**
+Every broker is a distinct installable component with its OWN `pyproject.toml` +
+VERSION (`src/gleipnir/broker/{git,pm}/`), AETOS mono-repo style. Each manifest
+declares a **compatibility range/matrix** for its deps — NOT a single frozen
+pin, NOT tied to the framework version or the other broker. Decoupled; each
+re-pins independently.
+
+**Recorded dependency — the MCP SDK (FastMCP), version owned per-component:**
+opencode speaks MCP over stdio; the brokers are stdio MCP servers. Writing the
+JSON-RPC handshake by hand was considered and rejected in favour of the SDK; the
+brokers run as separate stdio subprocesses, so the dep lives at the broker
+boundary, not in the enforcement core. **VERSION CAVEAT (verified):** naive
+`mcp>=1.0.0` resolves to `mcp 2.0.0`, which REMOVED `mcp.server.fastmcp`
+(FastMCP split out). The FastMCP API lives in `mcp` 1.x (AETOS runs 1.27.1; we
+verified 1.29.0) OR the standalone `fastmcp` 3.x. Each broker manifest MUST
+declare a **bounded** range containing FastMCP — `mcp>=1.0,<2` — never
+open-ended `>=1.0.0`.
+
+**REJECTED:** `python-dotenv` — opencode injects env via the MCP `environment:{}`
+block; `os.environ` suffices. No `.env` loader needed.
+
+**Boundary drawn sharply.** "Enforcement core = stdlib-only" is unchanged. Only
+`src/gleipnir/broker/**` may import the MCP SDK; every future dep still needs its
+own recorded justification. A broker-scoped conformance test
+(`tests/test_broker_stdlib_only.py`) asserts `mcp` never leaks into the core and,
+within `broker/`, is imported only by the `mcp_server.py` modules.
+
 ## Accrued-tooling reconciliation (this session)
 
 - **pytest** — the test runner. Was installed ad hoc into `.venv`. Now declared

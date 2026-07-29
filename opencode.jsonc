@@ -26,53 +26,19 @@
   "$schema": "https://opencode.ai/config.json",
 
   // --------------------------------------------------------------------------
-  // Orchestrator context-length cap (Tier-3 ENFORCEMENT MIRROR).
+  // Orchestrator context-length cap: UNSET (operator decision).
   //
-  // SINGLE SOURCE OF TRUTH: .gleipnir/policy/context-cap.jsonc (cap_tokens).
-  // Keep the limit.context below numerically EQUAL to that file's cap_tokens.
+  // The cap is intentionally in its "unset = no cap = model default" state
+  // (.gleipnir/policy/context-cap.jsonc). The orchestrator runs plain
+  // aperture-anthropic/anthropic.claude-sonnet-5 with NO capped alias and NO
+  // limit.context override, so Sonnet 5's own default context window applies.
   //
-  // Mechanism: this declares a DISTINCT capped model id under the (globally
-  // defined) aperture-anthropic provider — same underlying model as
-  // anthropic.claude-opus-4-8, differing ONLY by limit.context. ONLY the
-  // orchestrator points its `model:` at this capped id
-  // (.gleipnir/agents/orchestrator.md); every other opus agent keeps the
-  // uncapped anthropic.claude-opus-4-8, so the cap does not leak to
-  // gleipnir-plan / gleipnir-brainstorm (scope = orchestrator only).
-  //
-  // UNSET = NO CAP = MODEL DEFAULT: to remove the artificial constraint, delete
-  // this whole "provider" block AND repoint orchestrator.md `model:` back to
-  // aperture-anthropic/anthropic.claude-opus-4-8. Absence of the override = the
-  // model's default limit (never write limit.context: 0 to mean "unset").
-  //
-  // RESTART-TIME VERIFICATION (spike residual, interactive-session-context-cap-spike.md):
-  // this alias id must resolve to a real served model at the aperture endpoint.
-  // Verify on next opencode start that the orchestrator loads and reports a
-  // 250000 context window while a subagent (e.g. gleipnir-code) reports its
-  // base window. If the endpoint rejects the alias key as an unknown model,
-  // escalate to the reserved Approach-B scoped plugin (do NOT silently adopt).
+  // No capped-alias "provider" block is present here BY DESIGN: absence of the
+  // override IS the documented unset state (never limit.context: 0 to mean
+  // "unset"). To re-apply a cap later, re-add a capped alias under
+  // aperture-anthropic with limit { context: <cap>, output: <base output> } and
+  // repoint orchestrator.md `model:` at it (see .gleipnir/decisions/context-cap.md).
   // --------------------------------------------------------------------------
-  "provider": {
-    "aperture-anthropic": {
-      "models": {
-        // Capped alias of claude-opus-4-8 for the orchestrator only.
-        "anthropic.claude-opus-4-8-capped": {
-          "name": "claude-opus-4-8 (capped 250K, orchestrator)",
-          "tool_call": true,
-          "limit": {
-            "context": 250000,
-            // Schema requires both keys. `output` is NOT a functional cap we
-            // care about here (intent is the context cap); it must simply be
-            // present and MATCH the base model so the alias differs from
-            // anthropic.claude-opus-4-8 only by limit.context. 32000 is the
-            // Opus output cap at this Bedrock/Mantle endpoint (per
-            // ../aetos/opencode.json:12, which declares Opus as
-            // limit.context 200000 / output 32000).
-            "output": 32000
-          }
-        }
-      }
-    }
-  },
 
   // The orchestrator is the primary entry point: the G-5-engine stand-in that
   // drives the pipeline and delegates every unit of work to a bounded subagent.
@@ -81,6 +47,50 @@
   // Allow one level of nested delegation so the orchestrator's stage
   // subagents can themselves delegate where the pipeline requires it.
   "subagent_depth": 1,
+
+  // --------------------------------------------------------------------------
+  // Broker MCP servers (spec T-2 / G-2 single-holder, E-1 argument policy).
+  //
+  // Two pointy, purpose-scoped stdio MCP servers. Each is an independently
+  // versioned broker component (src/gleipnir/broker/{git,pm}/, own pyproject +
+  // VERSION + bounded mcp>=1.0,<2 range). They import the MCP SDK (FastMCP),
+  // which lives in the host .venv; the enforcement core stays stdlib-only. See
+  // .gleipnir/decisions/{runtime-and-deps.md, broker-mcp.md}.
+  //
+  // Launched as stdio subprocesses. PYTHONPATH=src so `gleipnir.broker.*`
+  // resolves the same way the sandbox/tests do. `mcp` resolves from .venv.
+  //
+  // Scoping: disabled globally (tools.*mcp*=false below), then re-enabled
+  // per-agent — git tools ONLY for git-ops, pm tools ONLY for project-mgr
+  // (the broker single-holder clause: no other role sees these tools).
+  // --------------------------------------------------------------------------
+  "mcp": {
+    "gleipnir-git": {
+      "type": "local",
+      "command": [".venv/bin/python", "-m", "gleipnir.broker.git.mcp_server"],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "enabled": true
+    },
+    "gleipnir-pm": {
+      "type": "local",
+      "command": [".venv/bin/python", "-m", "gleipnir.broker.pm.mcp_server"],
+      "environment": {
+        "PYTHONPATH": "src",
+        "GITLAB_TOKEN": "{env:GITLAB_TOKEN}",
+        "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
+      },
+      "enabled": true
+    }
+  },
+
+  // Disable both broker tool namespaces globally; each is re-enabled only for
+  // its single holder in that agent's own frontmatter (git-ops / project-mgr).
+  "tools": {
+    "gleipnir-git*": false,
+    "gleipnir-pm*": false
+  },
 
   // Framework instruction context loaded into every session.
   "instructions": [

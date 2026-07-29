@@ -155,6 +155,37 @@ confirmed by the runtime refusing the wrong-writer path.
 
 ---
 
+## L-C11 — A hunk-split commit delegation can DESTROY uncommitted work; stage-by-path is safe, interactive `git add -p` is not (for an agent)
+
+**Observed (this session):** the orchestrator delegated a three-commit,
+hunk-split commit to `git-ops` (splitting three files whose diffs spanned
+features, via interactive `git add -p`). The subagent hit its step cap
+mid-split and, in the process, **12 already-tracked files were reverted to
+their last-committed state** — every in-place edit made that session to an
+existing file was lost (untracked *new* files survived; HEAD never moved; no
+stash; not recoverable from git objects or opencode snapshots). Recovery was
+possible only because the edits were all documented in surviving decision
+records/plans and could be rebuilt by hand — an hour of avoidable rework, and
+had they been undocumented, permanent loss.
+
+**Proposed lesson:** (a) **Never route an interactive/`-p` hunk-split through an
+agent with a step cap** — a partial `git add -p` session interleaved with other
+git state manipulation is a data-loss hazard, not just a failed task. (b)
+Prefer **commit-by-whole-path** (`git add <path>`); when hunk-splitting is truly
+wanted, pre-split with **patch files** (`git diff > x.patch` → `git apply
+--cached`) authored by the orchestrator, so the broker only runs mechanical,
+idempotent staging — never destructive interactive editing. (c) **Commit early**:
+a large body of uncommitted, entangled work is itself the risk; had the node
+profile + context-cap-unset been committed when done, the blast radius of the
+failed split would have been one feature, not three. (d) The broker should
+**never discard working-tree edits as a side effect of staging** — a real
+`git-ops` safety property to build (refuse `checkout --`/`restore`/`reset --hard`
+against a dirty tree; treat the working tree as append-only during a commit
+task). Corollary to L-C4: verify against disk after EVERY git delegation, not
+just code ones.
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

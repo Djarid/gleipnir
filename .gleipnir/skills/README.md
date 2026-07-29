@@ -15,6 +15,7 @@ of the framework's goal (quality-efficient outcomes per LLM token).
 | `atlas/SKILL.md` | `aetos/.aetos/skills/atlas/SKILL.md` (v1.0, 300 lines) | **near-verbatim** (one caveat) | MIT, origin: aetos |
 | `brainstorm/SKILL.md` | `aetos/.aetos/skills/brainstorm/SKILL.md` (v1.1) | **near-verbatim** (Converge = precept-10 human-decision gate) | MIT, origin: aetos |
 | `decision-frameworks/SKILL.md` | `aetos/.aetos/skills/decision-frameworks/SKILL.md` (v1.2) | **near-verbatim** — this IS Gleipnir's **K-3**; analysis is input to convergence, bias signal feeds G-4c | MIT, origin: aetos |
+| `tier3-coach/SKILL.md` | — (net-new) | **ORIGINAL to Gleipnir** — not inherited; Detect→Locate→Propose→Converge→Hand-off for controls that belong in an agent-unreachable layer (Tier-3, git hooks, CI, OS). Proposes only, never implements | MIT, origin: gleipnir |
 
 **Why brainstorm + decision-frameworks were added (the decision-surfacing fix).**
 During the framework's own construction, plan-stage *design decisions* (e.g. a
@@ -27,9 +28,16 @@ K-3 catalogue (10 frameworks + 12 bias detectors) — converge on the operator
 owns these two skills and the convergence gate; `gleipnir-plan` plans only from
 a converged brief.
 
-Both are copied verbatim as the inheritance base, then annotated inline. No
-original text was deleted; superseded passages are retained for provenance
-inside `<details>` blocks and every change is marked `[GLEIPNIR ...]`.
+The four AETOS skills are copied verbatim as the inheritance base, then
+annotated inline. No original text was deleted; superseded passages are retained
+for provenance inside `<details>` blocks and every change is marked
+`[GLEIPNIR ...]`.
+
+**One skill is original to Gleipnir, not inherited:** `tier3-coach` (origin:
+gleipnir). When a control is moved out of an agent-reachable layer, it relocates
+to a layer the agent *cannot* write (Tier-3 config, git hooks, CI, OS); the
+agent must **propose** the control there and hand off, not smuggle it into a
+reachable layer. `gleipnir-brainstorm` loads it when such a gap appears.
 
 ## The load-bearing point: layer 2 (Orchestration)
 

@@ -24,3 +24,40 @@ test = ["python", "-m", "pytest", "-p", "no:cacheprovider"]
 lint = ["python", "-m", "compileall", "-q", "src"]
 coverage = { args = ["--cov=src/gleipnir", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
 test_selector_prefix = true
+
+# Node/JS cross-language conformance profile. Runs tests/test_sequence_gate.mjs
+# (the Python->JS HMAC-marker byte-for-byte contract proof + dogfood bridge) in
+# the bounded gleipnir-sandbox-node image. The suite imports a .ts file
+# (.gleipnir/plugins/sequence-gate.ts), so --experimental-strip-types is passed
+# (node 22.6+; the image ships node 22.23.1). Zero third-party deps (node:
+# builtins only) -> runs under --network=none.
+#
+# Image is digest-pinned per the strict image rule (profiles.py::_validate_image).
+# Built from ./Containerfile.node (node:22-slim digest-pinned); local digest
+# resolved via `podman inspect ... --format '{{.Digest}}'`.
+[profile.node]
+image = "localhost/gleipnir-sandbox-node@sha256:5e2e0acaaa4cfc5cea4c44a09f50b94e07f71c499eeed5a7e56090c28baa3409"
+test = ["node", "--experimental-strip-types", "--test", "tests/test_sequence_gate.mjs"]
+lint = ["node", "--experimental-strip-types", "--check", "tests/test_sequence_gate.mjs"]
+# D5 honest degradation: node built-in coverage (node --experimental-test-coverage)
+# deferred; this slice proves the zero-dep .mjs cross-language seam only.
+coverage = { unavailable = true, justified = "node built-in coverage deferred; zero-dep .mjs cross-language conformance seam only" }
+test_selector_prefix = false
+
+# Broker MCP profile. Runs the broker servers' test suite (tests/test_broker_*.py)
+# in the bounded gleipnir-sandbox-broker image, which is the ONLY sandbox image
+# carrying the MCP SDK (mcp>=1.0,<2 — the FastMCP-bearing line). This isolates
+# the mcp trusted surface (pydantic/starlette/etc.) to broker testing; the lean
+# python self-host image (./Containerfile) stays unchanged, so the default
+# profile's blast radius is not widened. Scoped to tests/test_broker_*.py so the
+# broker suite runs against the broker image without pulling the whole tree.
+#
+# Image is digest-pinned per the strict image rule. Built from
+# ./Containerfile.broker (python:3.12-slim + pytest/pytest-cov + mcp 1.x);
+# local digest resolved via `podman inspect ... --format '{{.Digest}}'`.
+[profile.broker]
+image = "localhost/gleipnir-sandbox-broker@sha256:7ffb1c282cc1fd94965615cec5cf807c70782d3be6e53425e070b67987c5cf91"
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py"]
+lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
+coverage = { args = ["--cov=src/gleipnir/broker", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
+test_selector_prefix = false

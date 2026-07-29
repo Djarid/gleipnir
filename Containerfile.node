@@ -1,0 +1,29 @@
+# S-2 sandbox image (node profile): the bounded, ephemeral environment in which
+# the language-agnostic sandbox runs the node/JS cross-language conformance suite
+# (tests/test_sequence_gate.mjs), so agent-authored JS never executes on the host
+# (G-2 bounded blast radius). Mirrors the shape of the python ./Containerfile.
+#
+# Node version: the .mjs suite imports a .ts file
+# (.gleipnir/plugins/sequence-gate.ts) and relies on Node's type-stripping.
+# node:22-slim ships Node >= 22.6, where --experimental-strip-types is available
+# (>= 23 makes it default). The profile's test/lint argv add the strip flag as
+# needed.
+#
+# Pinned by digest below so the image is reproducible and not silently moved.
+# Zero third-party deps: the suite uses only node: builtins, so NO network is
+# needed at run time — the entrypoint runs with --network=none.
+#
+# The repo is bind-mounted read-only at /work at run time (not COPYied in), with
+# a separate writable scratch mount — see src/gleipnir/sandbox/runtime.py. This
+# image deliberately contains NO source, NO credentials, NO keys.
+
+# node:22-slim (linux/arm64 + linux/amd64 multi-arch digest). Update the digest
+# deliberately when bumping the base; never rely on a moving tag.
+FROM docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+
+# Default workdir matches the run-argv's -w /work (the ro source bind mount).
+WORKDIR /work
+
+# No ENTRYPOINT/CMD: the entrypoint argv (node --test ... / node --check ...) is
+# supplied per-run by src/gleipnir/sandbox/runtime.py's build_run_argv, so the
+# image stays a generic bounded executor, not a baked-in single command.

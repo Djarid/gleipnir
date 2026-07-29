@@ -4,11 +4,11 @@ description: >-
   engine. Routes each pipeline stage to the correct capability-bounded
   subagent and blocks on human questions. Does not write code or run git.
 mode: primary
-# Capped model id (250K context) — see opencode.jsonc provider block and
-# .gleipnir/policy/context-cap.jsonc. ONLY this agent uses the capped id; all
-# other opus agents keep aperture-anthropic/anthropic.claude-opus-4-8 (uncapped).
-# To remove the cap: repoint this to aperture-anthropic/anthropic.claude-opus-4-8.
-model: aperture-anthropic/anthropic.claude-opus-4-8-capped
+# Sonnet 5, UNCAPPED. The context cap is deliberately UNSET (operator decision):
+# unset = no cap = model default (.gleipnir/policy/context-cap.jsonc). No capped
+# alias / provider block is in play. To re-apply a cap later, re-add a capped
+# alias in opencode.jsonc and repoint this `model:` per that file's mechanism.
+model: aperture-anthropic/anthropic.claude-sonnet-5
 temperature: 0.2
 steps: 40
 # Pinned rules re-injected verbatim after every context compaction by

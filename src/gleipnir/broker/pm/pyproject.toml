@@ -1,0 +1,12 @@
+[project]
+name = "gleipnir-broker-pm"
+dynamic = ["version"]
+description = "Gleipnir PM broker (gleipnir-pm) -- FastMCP stdio server exposing stateless issue-tracker operations (GitHub/GitLab). Independently versioned component; NOT part of the stdlib-only enforcement core (see .gleipnir/decisions/runtime-and-deps.md)."
+requires-python = ">=3.11"
+# Bounded MCP-SDK compliance range, fixed independently of the git broker's
+# range: mcp 2.0 REMOVED mcp.server.fastmcp, so this is deliberately
+# upper-bounded (never an open-ended >=1.0.0).
+dependencies = ["mcp>=1.0,<2"]
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }
