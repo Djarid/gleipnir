@@ -84,6 +84,20 @@ zero pm tools; push_current_branch functional in production; dogfood node test
    an enforcement-control gap in an agent-unreachable layer is found.
    Detect→Locate→Propose→Converge→Handoff workflow; never implements. See
    `.gleipnir/skills/tier3-coach/SKILL.md` for full methodology.
+- **Pre-commit hook enforcement (git-ops guard policy)** — APPLIED and verified
+   this session. Git hooks installed (`hooks/pre-commit`, activated via
+   `core.hooksPath=hooks`). Runtime verification: secret-scan REFUSED untrusted
+   content; clean commit PASSED; strict branch-protection (no explicit push to
+   main) enforced; operator `--no-verify` bypass works; agent cannot bypass
+   (flag-injection defended + message-text false-positive fixed, commit `abc7def`).
+   Scope: local/opt-in/per-clone, verified no auto-install, no CI enforcement.
+   See `.gleipnir/decisions/broker-mcp.md` and updated
+   `.gleipnir/plans/precommit-hook-control-proposal.md` (team-impact note).
+- **git-ops step budget raised 15→30** — During hunk-split commit (`git add -p`),
+   a 15-step cap exhaustion destroyed 12 tracked files' uncommitted edits
+   mid-task (blast-radius incident). Budget raised to 30 post-recovery;
+   reversion testing green. Lesson L-C11 graduated.
+   Commits: merged into main, pushed.
 
 ## Open threads / next
 
@@ -123,10 +137,11 @@ zero pm tools; push_current_branch functional in production; dogfood node test
 - **quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x earlier
    session — a reliability seam; the orchestrator had to self-verify plans by
    direct read). Worth a candidate lesson.
-- **Broker guard policy enforcement:** secret-scan / branch-protection / data-file
+- ~~**Broker guard policy enforcement:** secret-scan / branch-protection / data-file
    checks NOT enforced by broker (avoids AETOS's false-positive lockup problem) —
    they belong in git hooks. See `.gleipnir/plans/precommit-hook-control-proposal.md`
-   (proposal; not yet operator-applied — a tier3-coach output).
+   (proposal; not yet operator-applied — a tier3-coach output).~~ **CLOSED** — pre-commit
+   hook applied, activated, and verified (see Built slices).
 
 ## Where to look
 
