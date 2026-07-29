@@ -26,9 +26,13 @@ permission:
   # non-dangerous branch/sync verbs have no MCP replacement and must stay so a
   # session can always move branches. Removed: git add*/commit*/push* (now the
   # broker's commit_changes / push_current_branch) and the force-push denies.
+  # Read-only inspection verbs (status/diff/log) are allowed so git-ops can
+  # examine what it is about to commit (mirrors quality-reviewer's grant).
   bash:
     "*": deny
     "git status*": allow
+    "git diff*": allow
+    "git log*": allow
     "git checkout*": allow
     "git switch*": allow
     "git branch*": allow
