@@ -42,3 +42,10 @@ yet. This is the role skeleton and its capability posture.
   verify outputs against inputs; a subagent reporting success it did not
   achieve is a failure, not a success).
 - Never edit anything under `.gleipnir/`.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare tool call. If
+your final step is a notify call with no concluding text, the orchestrator
+receives an EMPTY result and cannot tell whether the human was actually
+reached. Before ending: report the delivery outcome — target, success/failure,
+and the exact error if it failed. Never claim a delivery you did not verify.

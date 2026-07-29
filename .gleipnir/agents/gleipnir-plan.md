@@ -85,3 +85,12 @@ Writing the plan to disk IS planning — never deferred, never blocked.
 A plan file under `.gleipnir/plans/` following `../goals/plan-format.md`
 (Architect / Trace / Link / Assemble / Stress-test / Execution Workflow).
 Hand back to the orchestrator, which sequences the stages the plan defines.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare `edit`/`read`
+call. If your final step writes the plan file and you then end the turn with no
+concluding text, the orchestrator receives an EMPTY result and cannot tell the
+plan was written (observed this session: plan writes that ended on a tool call
+needed repeated resume calls). Before ending: state the plan's path, the
+Assemble step order, and any new material tradeoff that must go back to the
+operator. If low on steps, stop and write this report with what you have.

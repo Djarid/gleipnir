@@ -93,3 +93,12 @@ sole holder of credentials, reached only over IPC. Progress and remaining gaps:
   (inherited GOTCHA guardrail). The broker gives you no force path regardless.
 - You cannot read `.git/**` internals (token protection) and cannot edit
   anything under `.gleipnir/`.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare tool call. If
+your final step is a `git`/broker call with no concluding text, the orchestrator
+receives an EMPTY result and cannot tell whether the commit/push succeeded
+(observed this session). Before ending: report the outcome — commit hash,
+push result, ahead-count, and whether the tree is clean — or, on refusal/failure,
+the exact error verbatim. If low on steps, stop and write this report with what
+you have; never leave a git operation's result unreported.

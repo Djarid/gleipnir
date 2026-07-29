@@ -121,3 +121,12 @@ Constraints, Approaches Considered, `## Decision Analysis`, Selected Approach
 (operator-converged), Open Questions, Scope Sketch. Read it back to confirm it
 persisted before reporting done. (For ordinary non-material approach selection,
 you may write the brief once the orchestrator confirms the single recommendation.)
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare `read`/`edit`
+call. If your final step is a tool call with no concluding text, the
+orchestrator receives an EMPTY result and your Decision Analysis (or the brief
+path) is lost. Before ending: return either the `## Decision Analysis` (options
++ framework + bias check + recommendation) for the orchestrator to converge, or
+— once converged — the brief path plus a summary of the decisions the operator
+must be shown. If low on steps, stop and write this report with what you have.

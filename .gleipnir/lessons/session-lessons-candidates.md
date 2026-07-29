@@ -261,6 +261,42 @@ have caught both the non-visibility and the fail-open exposure before restart.
 
 ---
 
+## L-C13 — The "empty return" is a no-trailing-text failure, not a step cap; fix it with a standing "end with a written report" rule in every subagent file
+
+**Observed (this + an earlier session):** subagent delegations repeatedly
+returned with **zero text** — `quality-reviewer` on a plan/implementation review,
+`gleipnir-code` on a test-writing task, `gleipnir-plan` mid-plan-write. L-C4
+recorded the *symptom* ("verify against disk"). The **root cause**, isolated this
+session: the agent's LAST action in the turn was a tool call (a `read`, an
+`edit`, a `git` call) with no concluding prose, so the harness surfaced an empty
+result — the work often HAD landed on disk, but was invisible to the
+orchestrator. This is distinct from a step-cap exhaustion (which narrates
+"reached the maximum step limit" and is fixed by raising `steps`, cf. L-C11 /
+the git-ops 15→30 bump). Two different failures with two different fixes; don't
+conflate them.
+
+**Evidence it's a discipline issue, not a resource one:** the one time an ad-hoc
+"end with a written summary report — do not return empty" line was added to a
+`gleipnir-code` delegation prompt, that task returned a full report immediately.
+The fix generalises that: a standing **"Always end with a written report (never
+return empty)"** section was added to ALL 8 subagent files (quality-reviewer,
+gleipnir-code, gleipnir-plan, gleipnir-brainstorm, git-ops, project-mgr, notify,
+session-scribe), each tailored to that role's output (verdict; files+coverage;
+plan path; decision analysis; commit/push result; issue id; delivery outcome;
+diff summary), and each saying: if low on steps, STOP and write the report with
+what you have.
+
+**Proposed lesson:** (a) A subagent's turn must never end on a bare tool call —
+the concluding text IS the return value; without it the work is lost to the
+pipeline regardless of what hit disk. Bake this into the agent template, not
+per-delegation prompts. (b) Keep L-C4's "verify against disk after every
+delegation" as the orchestrator-side backstop — belt and braces. (c) This is a
+candidate for a cheap automated guard: detect a subagent turn whose final event
+is a tool call with no trailing text and flag/re-prompt it. (d) Note the fix is
+restart-gated like all agent-file changes — takes effect next session.
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

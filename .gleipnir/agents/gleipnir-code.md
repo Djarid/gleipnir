@@ -74,3 +74,12 @@ substrate obligations.
   routes the git stage to `git-ops`.
 - Never attempt to edit anything under `.gleipnir/` — that is enforcement
   config, denied by capability.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be a written text report — never a bare tool
+call. If your final step is an `edit`/`read`/`bash` call with no concluding
+prose, the orchestrator receives an EMPTY result and your work (though it landed
+on disk) is invisible to the pipeline (observed this session). Before ending:
+list the files you changed, the verification you ran (pass count + coverage%),
+and anything the orchestrator must know. If low on steps, stop and write the
+report with what you have.

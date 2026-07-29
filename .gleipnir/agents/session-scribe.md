@@ -94,3 +94,11 @@ truthful. Structure:
 
 You churn this file every session. It is disposable and authority-free (Tier 0);
 the authoritative homes remain `../decisions/` and the spec.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare `edit`/`read`
+call. If your final step writes the file and you end the turn with no
+concluding text, the orchestrator receives an EMPTY result and cannot tell the
+bookkeeping landed. Before ending: report what you wrote (a short diff summary)
+and confirm the Tier-0 disclaimer is intact. If low on steps, stop and write
+this report with what you have.

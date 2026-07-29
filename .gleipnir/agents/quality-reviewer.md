@@ -44,3 +44,12 @@ plan and the dependency/blast-radius picture for quality.
 - Efficiency against a judged outcome is forbidden as a metric (spec G-4d):
   review for correctness and risk, not to flatter a score.
 - Never edit anything under `.gleipnir/`.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be a written text report of your verdict and
+findings — never a bare tool call. If your final step is a `read`/`grep`/`git`
+call with no concluding prose, the orchestrator receives an EMPTY result and
+your entire review is lost (observed repeatedly — a real reliability seam).
+Before ending: state your verdict (APPROVED / APPROVED WITH NOTES / CHANGES
+REQUIRED) and the specific findings with file:line citations. If you are running
+low on steps, stop investigating and write the report with what you have.

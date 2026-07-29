@@ -51,3 +51,10 @@ credential isolation (token co-located, not yet a separate broker address space
   you are asked to act in build with no issue, that is a planning failure —
   stop and flag it.
 - Never edit anything under `.gleipnir/`.
+
+## Always end with a written report (never return empty)
+Your LAST action in a turn MUST be written prose — never a bare tool call. If
+your final step is a PM/broker call with no concluding text, the orchestrator
+receives an EMPTY result and cannot tell what happened. Before ending: report
+the lifecycle action's outcome — issue id/URL, new state, or the exact error if
+it failed. If low on steps, stop and write this report with what you have.
