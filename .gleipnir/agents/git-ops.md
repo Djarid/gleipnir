@@ -7,7 +7,11 @@ description: >-
 mode: subagent
 model: aperture-anthropic/anthropic.claude-haiku-4-5
 temperature: 0
-steps: 15
+# 30 (raised from 15): single-verb git tasks fit in 15, but multi-step staging
+# and commit-refusal diagnostics do not — a 15-cap hit mid-`git add -p` during a
+# 3-commit hunk-split DESTROYED 12 tracked files' uncommitted edits this session
+# (lesson L-C11). Matches gleipnir-code's 30 (mechanical-but-sometimes-multi-step).
+steps: 30
 permission:
   edit: deny
   write: deny
