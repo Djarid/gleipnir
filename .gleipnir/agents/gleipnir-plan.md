@@ -19,6 +19,10 @@ permission:
     "*": deny
     ".gleipnir/plans/**": allow
 color: "#c586ff"
+# Broker single-holder: holds neither broker namespace (top-level tools, boolean).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # gleipnir-plan (planning role)

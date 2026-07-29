@@ -60,9 +60,14 @@
   // Launched as stdio subprocesses. PYTHONPATH=src so `gleipnir.broker.*`
   // resolves the same way the sandbox/tests do. `mcp` resolves from .venv.
   //
-  // Scoping: disabled globally (tools.*mcp*=false below), then re-enabled
-  // per-agent — git tools ONLY for git-ops, pm tools ONLY for project-mgr
-  // (the broker single-holder clause: no other role sees these tools).
+  // Single-holder scoping is done per-agent by DENY-LIST (AETOS-proven pattern):
+  // the MCP tools are enabled globally here, and each agent frontmatter DENIES
+  // the broker namespace(s) it must not hold. git-ops keeps gleipnir-git_* and
+  // denies gleipnir-pm_*; project-mgr keeps gleipnir-pm_* and denies
+  // gleipnir-git_*; every OTHER roster agent denies BOTH. (A global-disable +
+  // per-agent re-allow does NOT surface MCP tools to a subagent — see lesson
+  // L-C12b; deny-list is the working form. Tool names are `<server>_<tool>`, so
+  // the namespace glob is `gleipnir-git_*` / `gleipnir-pm_*`.)
   // --------------------------------------------------------------------------
   "mcp": {
     "gleipnir-git": {
@@ -83,13 +88,6 @@
       },
       "enabled": true
     }
-  },
-
-  // Disable both broker tool namespaces globally; each is re-enabled only for
-  // its single holder in that agent's own frontmatter (git-ops / project-mgr).
-  "tools": {
-    "gleipnir-git*": false,
-    "gleipnir-pm*": false
   },
 
   // Framework instruction context loaded into every session.

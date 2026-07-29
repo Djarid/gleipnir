@@ -25,6 +25,11 @@ permission:
     ".gleipnir/plans/**": allow
     ".gleipnir/var/tmp/**": allow
 color: "#4a90d9"
+# Broker single-holder: bookkeeping scribe holds neither broker namespace
+# (top-level tools, boolean false = deny).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # session-scribe (Tier-0 bookkeeping writer)

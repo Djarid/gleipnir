@@ -24,6 +24,10 @@ permission:
     "*": deny
     ".gleipnir/plans/**": allow
 color: "#ffb454"
+# Broker single-holder: holds neither broker namespace (top-level tools, boolean).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # gleipnir-brainstorm (design explorer + decision-surfacing gate)

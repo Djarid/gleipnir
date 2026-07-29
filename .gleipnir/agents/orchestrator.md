@@ -40,6 +40,11 @@ permission:
     notify: allow
     session-scribe: allow
 color: primary
+# Broker single-holder: the orchestrator holds NEITHER broker namespace.
+# TOP-LEVEL `tools:` key, BOOLEAN false = deny (not permission.tools).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # Orchestrator (G-5 stand-in)

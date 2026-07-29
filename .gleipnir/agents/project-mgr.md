@@ -15,12 +15,12 @@ permission:
   task: deny
   webfetch: deny
   read: allow
-  # The PM namespace: project-mgr is the ONLY role granted the gleipnir-pm
-  # broker tools (issue_create/update/comment/close), globally disabled in
-  # opencode.jsonc. This is the previously-missing T-4 PM tool surface.
-  tools:
-    "gleipnir-pm*": true
 color: "#bd10e0"
+# The PM namespace (AETOS deny-list pattern): project-mgr KEEPS the
+# gleipnir-pm_* tools (issue_create/update/comment/close) and DENIES the git
+# namespace. TOP-LEVEL `tools:` key with BOOLEAN values (false = deny).
+tools:
+  "gleipnir-git_*": false
 ---
 
 # project-mgr (single-namespace)

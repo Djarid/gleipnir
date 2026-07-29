@@ -57,10 +57,24 @@ Gleipnir, not copied.
   `pull*` — non-dangerous branch/sync verbs with no MCP replacement, so a
   session left on a protected branch can still move off it (deadlock avoidance
   — caught in spec-review, converged with the operator).
-- **Single-holder scoping.** Both broker tool namespaces are disabled globally in
-  `opencode.jsonc` (`tools.gleipnir-git*`/`gleipnir-pm*` = false) and re-enabled
-  per-agent: `gleipnir-git*` only for `git-ops`, `gleipnir-pm*` only for
-  `project-mgr`. No other role sees them (G-2 broker single-holder).
+- **Single-holder scoping — DENY-LIST pattern via TOP-LEVEL `tools:` booleans
+  (AETOS-proven; twice-corrected).** MCP tools are **enabled globally**
+  (`opencode.jsonc` `mcp` block, no top-level `tools` disable), and **each agent
+  frontmatter DENIES the namespace(s) it must not hold using its TOP-LEVEL
+  `tools:` key with boolean `false`** — NOT `permission.tools` (verified live:
+  a `permission.tools: deny` does NOT block MCP tools for a subagent).
+  `git-ops` sets `tools: {gleipnir-pm_*: false}` (keeps `gleipnir-git_*`);
+  `project-mgr` sets `{gleipnir-git_*: false}` (keeps `gleipnir-pm_*`); every
+  other roster agent sets BOTH to `false`. Tool names are `<server>_<tool>`, so
+  the glob uses the underscore form `gleipnir-git_*` / `gleipnir-pm_*`. See
+  lessons L-C12b.
+  **Why not global-disable + per-agent re-allow (the initially-shipped, then
+  disproven, approach):** a top-level `tools: {gleipnir-*: false}` global disable
+  does NOT get re-enabled for a *subagent* by a `permission.tools: allow` — the
+  MCP tools simply never surface to the subagent's function list (verified: the
+  broker connected but `git-ops` could not see `commit_changes`). The deny-list
+  (enabled-by-default, deny-what-you-shouldn't-hold) is the working form. See
+  lessons L-C12 / L-C12b.
 - **Each broker is its own independently-versioned component.**
   `src/gleipnir/broker/{git,pm}/` each has its own `pyproject.toml` + `VERSION`
   (starting 0.1.0) and its own **bounded** MCP-SDK compliance range

@@ -30,6 +30,10 @@ permission:
     "env*": deny
     "curl*": deny
 color: "#4aa3ff"
+# Broker single-holder: holds neither broker namespace (top-level tools, boolean).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # gleipnir-code (corrected exemplar)

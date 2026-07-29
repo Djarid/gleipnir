@@ -186,6 +186,81 @@ just code ones.
 
 ---
 
+## L-C12 — `permission.tools` takes allow/deny/ask; top-level `tools` takes true/false — mixing them fails config validation at restart
+
+**Observed (this session):** the broker MCP wiring granted each single-holder
+its tool namespace with `permission.tools: { "gleipnir-git*": true }` in the
+agent frontmatter. opencode **failed to start** — config validation rejected it
+(`Expected PermissionActionConfig, got true`). Two different keys with two
+different value grammars were conflated:
+
+| Key | Valid values |
+|---|---|
+| `tools:` (top-level, in opencode.jsonc) | `true` / `false` |
+| `permission.tools:` (agent frontmatter) | `allow` / `deny` / `ask` |
+| `permission.{edit,write,bash,...}:` | `allow` / `deny` / `ask` |
+
+The value-grammar rule: booleans ONLY under top-level `tools`; `allow/deny/ask`
+everywhere under `permission`. The bug used `true` where `allow` was required.
+(NOTE: the mechanism this entry originally recommended — "disable globally then
+re-enable the one holder with `permission.tools: allow`" — was subsequently
+DISPROVEN; see L-C12b. The correct single-holder mechanism is the deny-list in
+L-C12b, not global-disable-then-allow.)
+
+**Proposed lesson:** (a) config edits that only take effect at restart are
+**unverifiable from inside the running session** — a whole class of "authored,
+looks right, breaks on load" bugs (cf. the context-cap alias). Where possible,
+**validate the config against opencode's schema before declaring done** (e.g. a
+schema check in a preflight/CI step), rather than discovering it at the operator's
+next restart. (b) Remember the grammar split: booleans only under top-level
+`tools`; `allow/deny/ask` everywhere under `permission`. (c) This is a candidate
+for a cheap automated guard — a lint that flags a boolean under any
+`permission.*` key in an agent file.
+
+---
+
+## L-C12b — Single-holder MCP scoping is a DENY-LIST (enable globally, deny per-agent); global-disable does NOT re-enable for a subagent
+
+**Observed (this session):** after fixing L-C12's boolean bug, the broker MCP
+tools *connected* (opencode `mcp list` showed both servers green) but the
+`git-ops` **subagent still could not see** its `commit_changes`/`push_current_branch`
+tools — they were absent from its function list. Root cause: the wiring used a
+top-level `tools: { "gleipnir-git*": false }` **global disable** and tried to
+re-enable it for the one holder via `permission.tools: { ...: allow }`. That
+re-enable does NOT surface a globally-disabled MCP tool to a *subagent*. The
+working pattern (AETOS, `../aetos/opencode.json`): **enable MCP tools globally
+(no top-level disable), and have each agent DENY the namespaces it must not
+hold.** git-ops denies `gleipnir-pm_*` (keeps git); project-mgr denies
+`gleipnir-git_*` (keeps pm); every other agent denies BOTH. Net effect is the
+same single-holder guarantee, but it actually works.
+
+**The scoping goes in the TOP-LEVEL `tools:` frontmatter key with BOOLEAN values
+(`false` = deny), NOT `permission.tools`.** Verified live this session: a
+`permission.tools: {gleipnir-pm_*: deny}` on git-ops did NOT block the pm tools
+(git-ops could still see and call them); moving it to a top-level `tools:
+{gleipnir-pm_*: false}` (the AETOS form, `../aetos/opencode.json` git-ops) is
+what actually denies. So the two-grammar rule from L-C12 has a THIRD facet: MCP
+per-agent tool visibility is controlled ONLY by the top-level `tools:` booleans
+(both in opencode.jsonc `agent.<name>.tools` and in a frontmatter agent's
+top-level `tools:` key) — `permission.tools` does not gate MCP tool visibility
+for a subagent at all.
+
+**Proposed lesson:** (a) For per-agent MCP scoping use the **deny-list**
+(enabled-by-default, deny-what-you-shouldn't-hold) via the **top-level `tools:`
+key with booleans** — NOT global-disable, NOT `permission.tools`. (b) MCP tool
+names are `<server>_<tool>`; the namespace glob therefore needs the
+**underscore** form `gleipnir-git_*`, not `gleipnir-git*`.
+(c) **A newly-added deny-list is a fail-OPEN change**: enabling tools globally
+means every agent that isn't explicitly denied silently GAINS them — the review
+that caught quality-reviewer/session-scribe missing their deny-lines (they'd
+have gained commit/push + issue tools on restart) shows why the whole roster,
+not just the two holders, must be checked when adding a globally-enabled MCP.
+(d) Reinforces L-C12(a): this was again only observable at restart — a
+schema/scoping preflight that enumerates each agent's effective tool set would
+have caught both the non-visibility and the fail-open exposure before restart.
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

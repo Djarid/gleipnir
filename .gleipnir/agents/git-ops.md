@@ -33,11 +33,14 @@ permission:
     "git pull*": allow
     "sh*": deny
     "bash*": deny
-  # The broker single-holder clause: git-ops is the ONLY role granted the
-  # gleipnir-git broker tools (globally disabled in opencode.jsonc).
-  tools:
-    "gleipnir-git*": true
 color: "#7ed321"
+# The broker single-holder clause (AETOS deny-list pattern): git-ops KEEPS the
+# gleipnir-git_* tools (enabled globally) and DENIES the pm namespace. This is
+# the TOP-LEVEL `tools:` key with BOOLEAN values (false = deny) — NOT
+# `permission.tools` (which is allow/deny/ask and, verified this session, does
+# NOT block MCP tools for a subagent). Every other roster agent denies BOTH.
+tools:
+  "gleipnir-pm_*": false
 ---
 
 # git-ops (broker single-holder)

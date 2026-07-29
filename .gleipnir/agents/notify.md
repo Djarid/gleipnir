@@ -15,6 +15,10 @@ permission:
   webfetch: deny
   read: allow
 color: "#50e3c2"
+# Broker single-holder: holds neither broker namespace (top-level tools, boolean).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # notify (single-namespace)

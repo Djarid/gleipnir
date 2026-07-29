@@ -20,6 +20,11 @@ permission:
     "git show*": allow
     "git status*": allow
 color: "#f5a623"
+# Broker single-holder: read-only reviewer holds neither broker namespace
+# (top-level tools, boolean false = deny).
+tools:
+  "gleipnir-git_*": false
+  "gleipnir-pm_*": false
 ---
 
 # quality-reviewer (reference floor: read-only)
