@@ -61,18 +61,50 @@ mcp = FastMCP(
 #   - `--no-verify` / `-n`  (commit & push: skip pre-commit/pre-push hooks)
 #   - `-c core.hooksPath=…`  (redirect hooks away, incl. to /dev/null)
 #   - `--no-verify` folded into `=` forms
-# This is not a heuristic that can false-positive on user content: the broker
-# constructs all its own argvs from constants, so a match here can only mean a
-# bypass attempt, never legitimate payload.
+# The guard screens FLAG POSITIONS, not free text: `commit_changes` builds
+# argvs like `["commit", "-m", message]` where `message` is arbitrary user
+# content that may legitimately *mention* "--no-verify" or "core.hooksPath"
+# (e.g. a commit documenting this very guard). Scanning every token blindly
+# would false-positive on that payload. So the scanner skips the value that
+# immediately follows a message/file option (`-m`/`--message`/`-F`/`--file`,
+# including their `=`-joined forms) before checking for bypass surfaces --
+# it refuses bypass FLAGS wherever they appear, but never trips on message
+# or file-content TEXT.
 # ---------------------------------------------------------------------------
 
 _HOOK_BYPASS_TOKENS = ("--no-verify", "-n")
 
+# Options whose NEXT argv token is an opaque free-text value (never a flag):
+# the commit message (`-m`/`--message`) or a message-file path (`-F`/`--file`).
+# Compared CASE-SENSITIVELY (unlike the bypass-token checks below): git's
+# short flags are case-sensitive and `-F` (message-file) is a different flag
+# from `-f` (force) -- lowercasing here would wrongly conflate them.
+_MESSAGE_VALUE_OPTIONS = ("-m", "--message", "-F", "--file")
+
+# `=`-joined forms glue the payload onto the option token itself; skip the
+# whole token rather than trying to peel the value off. Also case-sensitive.
+_MESSAGE_EQUALS_PREFIXES = ("--message=", "--file=")
+
 
 def _rejects_hook_bypass(args: List[str]) -> Optional[str]:
-    """Return a reason string if ``args`` would bypass git hooks, else None."""
+    """Return a reason string if ``args`` would bypass git hooks, else None.
+
+    Screens flag POSITIONS only: the value following a message/file option
+    (`-m`/`--message`/`-F`/`--file`, or their `=`-joined forms) is opaque
+    payload and is skipped, never scanned as a potential flag.
+    """
+    skip_next = False
     for tok in args:
-        low = tok.strip().lower()
+        if skip_next:
+            skip_next = False
+            continue
+        stripped = tok.strip()
+        if stripped in _MESSAGE_VALUE_OPTIONS:
+            skip_next = True
+            continue
+        if stripped.startswith(_MESSAGE_EQUALS_PREFIXES):
+            continue
+        low = stripped.lower()
         if low in _HOOK_BYPASS_TOKENS or low.startswith("--no-verify"):
             return f"refused: '{tok}' would bypass git hooks (not permitted)"
         # `-c core.hooksPath=...` (or `--config`) redirecting/disabling hooks.

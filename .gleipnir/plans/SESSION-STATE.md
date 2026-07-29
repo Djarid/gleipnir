@@ -8,12 +8,15 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 ## Current state
 
 All six enforcement guards (G-1..G-6) have real, tested first slices, plus a
-language-agnostic sandbox executor, the session-scribe bookkeeping role, and the
-orchestrator interactive-session context-cap feature. Latest committed + pushed
-state is on `origin` (`git@github.com:Djarid/gleipnir.git`, branch `main`).
-Tests as of the language-agnostic-sandbox slice: **438 passed / 11 skipped / 93%
-coverage** (in-sandbox). Context-cap feature verified Tue 28 Jul 2026 (restart
-stress-test S1/S2 passed; Approach-B escalation not required).
+language-agnostic sandbox executor (node profile + broker profile live),
+two broker MCP servers (gleipnir-git / gleipnir-pm with single-holder scoping),
+the tier3-coach skill for control-gap proposals, the session-scribe bookkeeping
+role, and the orchestrator interactive-session context-cap feature. Latest
+committed + pushed state is on `origin` (`git@github.com:Djarid/gleipnir.git`,
+branch `main`). Tests: **broker profile 43 passed; python self-host 476 passed /
+11 skipped**. All features verified live post-restart (git-ops sees 4 git tools,
+zero pm tools; push_current_branch functional in production; dogfood node test
+16/16 pass in-container).
 
 ## Built slices (verified against disk / commits)
 
@@ -38,58 +41,92 @@ stress-test S1/S2 passed; Approach-B escalation not required).
 - **session-scribe** (this slice) — Tier-0-scoped bookkeeping writer + the
   resume mechanism (this file). See `../decisions/session-scribe.md`.
 - **Orchestrator interactive-session context-cap** — Tue 28 Jul 2026.
-  Orchestrator runs on capped model `aperture-anthropic/anthropic.claude-opus-4-8-capped`
-  (limit.context 250000 / output 32000, declared in `opencode.jsonc`);
-  `gleipnir-plan` and `gleipnir-brainstorm` remain uncapped (scope verified, no leak).
-  Single source of truth: `.gleipnir/policy/context-cap.jsonc` (cap_tokens 250000).
-  At-cap compaction rules: `.gleipnir/plugins/compaction-survival.ts` (ported from AETOS).
-  Durable record: `.gleipnir/decisions/context-cap.md` (policy enforced-at-hook, not yet G-1 closed).
-  Operator restart-verified: Stress-test S1/S2 passed; 250000 window confirmed.
-  **Observed seam:** gleipnir-code enforces grant denies ALL `.gleipnir/**` writes
-  (no Tier-0 `var/tmp` carve-out), vs AGENTS.md narrating `var/tmp` as agent-writable —
-  candidate lesson on doc-vs-grant discrepancy.
+   Orchestrator runs on capped model `aperture-anthropic/anthropic.claude-opus-4-8-capped`
+   (limit.context 250000 / output 32000, declared in `opencode.jsonc`);
+   `gleipnir-plan` and `gleipnir-brainstorm` remain uncapped (scope verified, no leak).
+   Single source of truth: `.gleipnir/policy/context-cap.jsonc` (cap_tokens 250000).
+   At-cap compaction rules: `.gleipnir/plugins/compaction-survival.ts` (ported from AETOS).
+   Durable record: `.gleipnir/decisions/context-cap.md` (policy enforced-at-hook, not yet G-1 closed).
+   Operator restart-verified: Stress-test S1/S2 passed; 250000 window confirmed.
+   **Observed seam:** gleipnir-code enforces grant denies ALL `.gleipnir/**` writes
+   (no Tier-0 `var/tmp` carve-out), vs AGENTS.md narrating `var/tmp` as agent-writable —
+   candidate lesson on doc-vs-grant discrepancy.
+- **Node profile real-run (language-agnostic sandbox, this session)** — CLOSED.
+   `Containerfile.node` (FROM node:22-slim, digest-pinned) built to
+   `localhost/gleipnir-sandbox-node`. Live profile `[profile.node]` in
+   `.gleipnir/sandbox/profiles.toml`, digest-pinned. `tests/test_sequence_gate.mjs`
+   **16 passed, exit 0** under `--network=none` in-container, INCLUDING the dogfood
+   block (Python↔JS HMAC contract verified byte-for-byte). No regression: python
+   self-host green. Decision record: `.gleipnir/decisions/language-agnostic-sandbox.md`.
+- **Broker MCP servers: gleipnir-git + gleipnir-pm** — Completed this session.
+   Two pointy stdio MCP servers, 4 tools each (git: `git_status`, `git_diff`,
+   `commit_changes`, `push_current_branch`; pm: `issue_create`, `issue_update`,
+   `issue_comment`, `issue_close`). Each independently versioned (0.1.0) in
+   `src/gleipnir/broker/{git,pm}/` with own `pyproject.toml` + bounded `mcp>=1.0,<2`.
+   **E-1 argument-policy half CLOSED structurally:** force-push absent from tool
+   surface (no code path exists); `_run_git` refuses hook-bypass flags
+   (`--no-verify`/`-n`/`-c core.hooksPath`), so agents cannot bypass operator git
+   hooks. Credential-unreachability half still open (S-2 boundary). Single-holder
+   scoping via TOP-LEVEL `tools:` frontmatter key with BOOLEAN values (`false`=deny),
+   verified live post-restart: git-ops sees 4 git tools + ZERO pm tools;
+   push_current_branch deployed to production (3 commits pushed). Guard policy
+   (secret-scan/branch-protection/data-file) NOT enforced by broker; belongs in git
+   hooks (see `.gleipnir/plans/precommit-hook-control-proposal.md`, proposal not yet
+   operator-applied). Broker sandbox: `Containerfile.broker` + `[profile.broker]`
+   isolate MCP SDK transitive tree; default_profile stays python; `conftest.py`
+   skip-gates mcp-dependent test where mcp is absent. Tests: broker profile **43
+   passed**; python self-host **476 passed / 11 skipped**. Decision record:
+   `.gleipnir/decisions/broker-mcp.md`. Plan: `.gleipnir/plans/broker-mcp.md`
+   (spec-review approved, 2 rounds). Commits: ad32280 (features), a bool-fix commit,
+   c8050da (scoping fix) — all pushed to origin/main.
+- **Tier3-coach skill (originated gleipnir; not AETOS-inherited)** — Added to
+   `.gleipnir/skills/tier3-coach/SKILL.md`. Loaded by gleipnir-brainstorm when
+   an enforcement-control gap in an agent-unreachable layer is found.
+   Detect→Locate→Propose→Converge→Handoff workflow; never implements. See
+   `.gleipnir/skills/tier3-coach/SKILL.md` for full methodology.
 
 ## Open threads / next
 
-**Tue 28 Jul 2026 — session-scribe dispatch (L-C10 closure):**
-- Orchestrator sequencing three immediate threads in order:
-  1. **End-to-end session-scribe run** — this delegation (proves the L-C10 loop).
-  2. **Node profile real-run** — build operator digest-pinned node Containerfile + image, run profile → closes dogfood node cross-lang seam (currently dispatch-proven only).
-  3. **S-2 activation (operator)** — dedicated agent uid + chmod OS-ro + G-3 key OS-unreadable + `bin/gleipnir-preflight` before sessions.
-- **NEW brainstorm-stage capability:** Interactive-session context-length cap entering pipeline.
-  - Limit: **250K tokens** (operator-decided surface; interactive-session only).
-  - Scope: primary interactive agents *only* (`/plan`, `/build`, `/orchestrator`).
-  - **NOT per-subagent; NOT the G-4d ledger.**
+**Wed 29 Jul 2026 — Post-broker-MCP session:**
+- Broker MCP servers live; single-holder scoping verified; E-1 argument-policy structurally closed (credential half open).
+- **MCP-scoping incident (3 distinct bugs found+fixed, session seam):**
+   - Bug 1: `permission.tools` requires `allow/deny/ask`, not booleans (operator caught; fixed).
+   - Bug 2: global-disable-then-per-agent-`permission.tools:allow` does NOT surface MCP tools to subagent (discovered live via git-ops probe; unverified: commit tool missing from function list).
+   - Bug 3: `permission.tools: deny` does NOT gate MCP visibility for a subagent either (discovered via SECOND live probe: git-ops saw pm tools despite deny). Working fix: per-agent scoping ONLY in TOP-LEVEL `tools:` key with booleans (enable globally, deny per-agent).
+   - **Lesson records:** L-C12 (boolean/allow-deny grammar split), L-C12b (deny-list scoping pattern, subagent tool visibility triple-check).
+- **Blast-radius near-miss:** hunk-split commit via `git add -p` DESTROYED 12 tracked files' uncommitted edits mid-task (subagent step cap hit). Recovered by hand-rebuilding from decision records. See lessons L-C11, L-C12, L-C12b for full detail.
+- **Immediate next:** S-2 activation (operator) — dedicated agent uid + chmod OS-ro + G-3 key OS-unreadable + `bin/gleipnir-preflight` enforcement.
 
 ## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
 
-- **Node profile real-run:** needs an operator-built digest-pinned node
-  Containerfile + image; until then the node profile is dispatch-proven only.
-- **Dogfood node cross-language block** (`tests/test_sequence_gate.mjs`):
-  committed but NOT yet agent-run (no roster agent has a node grant; sandbox had
-  no node profile image). Statically sound; fixture MAC confirmed Python-side.
 - **S-2 activation (operator):** dedicated agent uid + chmod OS-ro + G-3 key
-  OS-unreadable + `bin/gleipnir-preflight` (code built, commit `5cd329c`).
+   OS-unreadable + `bin/gleipnir-preflight` (code built, commit `5cd329c`).
 - **S-2 mount + terminal closure + S-3 preflight wiring:** the structural
-  boundary that makes `.gleipnir/` unwritable (vs today's preflight OS-perms
-  floor).
+   boundary that makes `.gleipnir/` unwritable (vs today's preflight OS-perms
+   floor).
+- **E-1 credential-unreachability half:** brokers run as opencode stdio subprocesses,
+   not outside S-2; SSH/git-credential-helper and env-injected GITLAB_TOKEN/GITHUB_TOKEN
+   still co-located with session. Argument-policy half closed (no force-push path).
+- **E-2** platform-webhook receiver; **E-3** novelty-triage signal quality.
 - **G-4 remainder:** observer, novelty triage (G-4c), TS-side emit;
-  cost/economic-chain in the ledger (needs S-2 rate-table + token provenance).
-- **E-1** broker argument policy; **E-2** platform-webhook receiver; **E-3**
-  novelty-triage signal quality.
+   cost/economic-chain in the ledger (needs S-2 rate-table + token provenance).
 - **Engine hybrid-C per-stage escalation:** deferred (global revert budget is
-  the current trigger).
+   the current trigger).
 - **Live TS `tool.execute.after` advance hook** (armed-run dogfood seam 7);
-  real-CI attestation feeding `attempt_gate` / G-3.2 sourcing (seam 8).
+   real-CI attestation feeding `attempt_gate` / G-3.2 sourcing (seam 8).
 - **Rust/C/C++ sandbox profiles** + the offline-deps fetch-then-seal decision.
 - **`bin/gleipnir-sandbox lint`** fails writing `__pycache__` under the ro `src`
-  mount (pre-existing, all files).
+   mount (pre-existing, all files).
 - **git-ops allowlist** lacks `git diff`/`git log` (read-only inspection gap).
 - **Option C — plugin-hosted typed bookkeeping tools** (the session-scribe
-  graduation target; not built).
-- **quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x this
-  session — a reliability seam; the orchestrator had to self-verify plans by
-  direct read). Worth a candidate lesson.
+   graduation target; not built).
+- **quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x earlier
+   session — a reliability seam; the orchestrator had to self-verify plans by
+   direct read). Worth a candidate lesson.
+- **Broker guard policy enforcement:** secret-scan / branch-protection / data-file
+   checks NOT enforced by broker (avoids AETOS's false-positive lockup problem) —
+   they belong in git hooks. See `.gleipnir/plans/precommit-hook-control-proposal.md`
+   (proposal; not yet operator-applied — a tier3-coach output).
 
 ## Where to look
 

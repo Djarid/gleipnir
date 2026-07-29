@@ -101,6 +101,30 @@ class TestGitBrokerToolSurface:
         assert reject(["-c", "core.hooksPath=/dev/null", "commit", "-m", "m"]) is not None
         assert reject(["-c", "core.hooksPath=", "commit", "-m", "m"]) is not None
 
+    def test_run_git_does_not_false_positive_on_commit_message_text(self):
+        # Regression: `commit_changes` builds `["commit", "-m", message]`,
+        # putting arbitrary user text in the argv. A message that merely
+        # MENTIONS a bypass surface (e.g. documenting this guard) must NOT
+        # be refused -- the guard screens flag POSITIONS, not message TEXT.
+        reject = git_mcp_server._rejects_hook_bypass
+
+        # -m VALUE containing bypass-looking substrings: allowed.
+        assert reject(["commit", "-m", "mentions --no-verify in the message"]) is None
+        assert reject(["commit", "-m", "talks about core.hooksPath here"]) is None
+
+        # `=`-joined --message form: the whole payload is glued on and must
+        # also be exempt.
+        assert reject(["commit", "--message=discusses --no-verify"]) is None
+
+        # But a REAL bypass flag must still be caught, whether it appears
+        # before or after the -m/value pair -- only the -m VALUE is exempt.
+        assert reject(["commit", "--no-verify", "-m", "msg"]) is not None
+        assert reject(["commit", "-m", "msg", "--no-verify"]) is not None
+
+        # And a real -c core.hooksPath= override must still be caught even
+        # when a -m option follows it.
+        assert reject(["-c", "core.hooksPath=/dev/null", "commit", "-m", "msg"]) is not None
+
 
 class TestPmBrokerToolSurface:
     def test_exactly_the_four_pm_tools_are_registered(self):

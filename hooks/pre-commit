@@ -1,0 +1,46 @@
+#!/bin/sh
+# Gleipnir pre-commit hook — secret-scan (always) + opt-in branch/data-file.
+#
+# Enforcement lives HERE (the VCS layer), not in the git broker. Runs for
+# humans and agents. Humans may bypass with `git commit --no-verify` (their
+# call); the gleipnir-git broker CANNOT pass --no-verify, so agents cannot
+# bypass it. Mirrors src/gleipnir/broker/git/guards.py's advisory logic.
+#
+# Toggles (env):
+#   GLEIPNIR_GIT_STRICT=1            enable branch + data-file checks
+#   GLEIPNIR_GIT_PROTECT_BRANCHES=1  branch check only
+#   GLEIPNIR_GIT_CHECK_DATA_FILES=1  data-file check only
+#   GLEIPNIR_GIT_PROTECTED_BRANCHES  comma list (default main,master)
+set -eu
+
+fail=0
+
+# --- Secret-scan (ALWAYS ON — the safety invariant) ---
+# Scan only +-added lines of the staged diff.
+added=$(git diff --cached --unified=0 | grep '^+' | grep -v '^+++' || true)
+if printf '%s\n' "$added" | grep -Eq \
+  'AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|glpat-[A-Za-z0-9_-]{20,}|xox[bps]-[0-9A-Za-z-]{10,}|-----BEGIN[[:space:]].*PRIVATE[[:space:]]KEY-----|AIza[0-9A-Za-z_-]{35}'; then
+  echo "pre-commit: potential secret in staged changes — refusing." >&2
+  echo "  (false positive? fix the content, or the operator may 'git commit --no-verify')" >&2
+  fail=1
+fi
+
+# --- Branch protection (OPT-IN) ---
+if [ "${GLEIPNIR_GIT_STRICT:-}" = "1" ] || [ "${GLEIPNIR_GIT_PROTECT_BRANCHES:-}" = "1" ]; then
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  protected="${GLEIPNIR_GIT_PROTECTED_BRANCHES:-main,master}"
+  IFS=','; for b in $protected; do
+    [ "$branch" = "$(printf '%s' "$b" | tr -d ' ')" ] && {
+      echo "pre-commit: commits to protected branch '$branch' are refused (strict)." >&2; fail=1; }
+  done; unset IFS
+fi
+
+# --- Data-file hygiene (OPT-IN) ---
+if [ "${GLEIPNIR_GIT_STRICT:-}" = "1" ] || [ "${GLEIPNIR_GIT_CHECK_DATA_FILES:-}" = "1" ]; then
+  if git diff --cached --name-only | grep -Eq '(^|/)\.env(\.|$)|\.(db|sqlite|sqlite3)$|(^|/)\.?venv/'; then
+    echo "pre-commit: staged data/artifact file (.env/.db/.sqlite/venv) — refusing (strict)." >&2
+    fail=1
+  fi
+fi
+
+exit $fail
