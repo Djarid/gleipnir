@@ -100,6 +100,32 @@ branch + data-file are opt-in via env. A human bypasses with `git commit
 pass `--no-verify`/`-n`/`-c core.hooksPath` (refused at `_run_git`), so an agent
 committing through the broker always runs this hook.
 
+**Scope — team impact (verified):** The hook activation (`git config
+core.hooksPath hooks`) is LOCAL to one working copy on one machine — it writes
+to `.git/config`, which is never tracked, committed, pushed, or pulled. Team
+members who clone or pull this repo:
+- **WILL** see `hooks/pre-commit` appear as a normal tracked file (harmless — a
+  file's presence alone does nothing).
+- **WILL NOT** have it activated: `core.hooksPath` defaults to unset, so git
+  falls back to the empty, untracked `.git/hooks/` — zero behaviour change
+  unless they deliberately opt in with the same `git config` command, per
+  clone.
+- Are **NOT** affected by any auto-install: neither `Makefile` (test/lint/build
+  → the sandbox entrypoint only) nor `.envrc` (sets only `OPENCODE_CONFIG_DIR`)
+  touches git config. No `.github/` or `.gitlab-ci.yml` exists, so there is no
+  server-side/remote enforcement layer either — this is purely a local, opt-in
+  client-side hook.
+- Team members who never touch the Gleipnir agent tooling and just use plain
+  `git` are completely unaffected either way: the broker's `--no-verify`
+  refusal lives inside `gleipnir-git`'s `_run_git` and only constrains AGENT
+  commits routed through that broker; a human's own `git commit` (with or
+  without `--no-verify`) is untouched by any of this.
+
+**Bottom line:** adopting this hook is a per-person, per-clone choice. It does
+not silently spread to teammates who haven't opted in, and it never restricts a
+human's own git usage — only an agent operating through the `gleipnir-git`
+broker.
+
 **Honesty label:** cooperative-policy-until-S-2. `core.hooksPath` and the hook
 file are operator-settable and (pre-S-2) not structurally locked; the guarantee
 that the *agent* can't skip the hook rests on the broker's `_run_git` refusal,
