@@ -24,6 +24,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import config_scan
 from .boundary import Verdict, run_preflight
 
 
@@ -64,7 +65,36 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    """Dispatch on a leading `config-scan` subcommand token; otherwise fall
+    through to the original flat boundary-preflight invocation UNCHANGED
+    (exact backward compatibility for `bin/gleipnir-preflight`'s existing
+    `--agent-uid`/`--agent-gid`/`--config-root`/`--override-ack` form, which
+    predates this subcommand and has no leading positional of its own).
+
+    `config-scan` is a mode/subcommand on this SAME out-of-framework CLI
+    (Link-time decision, `.gleipnir/plans/config-scoping-preflight.md`), not
+    a second binary -- sharing the fail-closed 0/1/2 exit-code convention.
+    Everything after `config-scan` is passed straight through to
+    `config_scan.config_scan_main`, which owns its own `--strict`/
+    `--override-ack` flags independently of the boundary parser's.
+    """
+
+    resolved_argv = sys.argv[1:] if argv is None else argv
+
+    if resolved_argv and resolved_argv[0] == "config-scan":
+        config_root = None
+        # Support a shared `--config-root` in front of/after the
+        # subcommand token, mirroring the boundary parser's own flag, for
+        # operator convenience -- but config_scan_main's own argparse
+        # instance owns --strict/--override-ack.
+        rest = list(resolved_argv[1:])
+        if "--config-root" in rest:
+            idx = rest.index("--config-root")
+            config_root = Path(rest[idx + 1])
+            del rest[idx:idx + 2]
+        return config_scan.config_scan_main(rest, config_root=config_root)
+
+    args = build_parser().parse_args(resolved_argv)
     config_root = (
         Path(args.config_root) if args.config_root else _repo_root() / ".gleipnir"
     )

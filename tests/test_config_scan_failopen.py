@@ -251,6 +251,44 @@ class TestST8MisScopedGlobWarnsNotSilentPass:
         assert "gleipnir-pm*" in findings[0].where
 
 
+class TestNonDictToolsNeverRaisesDefenseInDepthForMisScoped:
+    """Regression for the uncaught-AttributeError gap: `find_mis_scoped_
+    denies` must NEVER trust that `check_grammar` ran first -- a present-
+    but-non-dict `tools` value (own frontmatter OR jsonc override) must be
+    treated as "nothing to scan" rather than raising."""
+
+    def test_bareword_bool_tools_value_does_not_raise_and_finds_nothing(self):
+        agents = {"some-agent": {"tools": True}}
+        findings = cs.find_mis_scoped_denies(agents, ["gleipnir-git", "gleipnir-pm"])
+        assert findings == []
+
+    def test_list_tools_value_does_not_raise_and_finds_nothing(self):
+        agents = {"some-agent": {"tools": ["gleipnir-git*"]}}
+        findings = cs.find_mis_scoped_denies(agents, ["gleipnir-git", "gleipnir-pm"])
+        assert findings == []
+
+    def test_non_dict_jsonc_override_does_not_raise_and_finds_nothing_extra(self):
+        agents = {"some-agent": {"tools": {}}}
+        overrides = {"some-agent": True}
+        findings = cs.find_mis_scoped_denies(
+            agents, ["gleipnir-git", "gleipnir-pm"], overrides
+        )
+        assert findings == []
+
+    def test_non_dict_own_tools_still_lets_a_well_formed_override_be_scanned(self):
+        """The guard must be narrowly scoped to the malformed value only
+        -- a non-dict own-`tools` must not suppress scanning of a
+        well-formed override for the SAME agent."""
+        agents = {"some-agent": {"tools": 1}}
+        overrides = {"some-agent": {"gleipnir-pm*": False}}  # mis-scoped
+        findings = cs.find_mis_scoped_denies(
+            agents, ["gleipnir-git", "gleipnir-pm"], overrides
+        )
+        assert len(findings) == 1
+        assert "some-agent" in findings[0].where
+        assert "gleipnir-pm*" in findings[0].where
+
+
 # ---------------------------------------------------------------------------
 # ST-2: the reintroduced global-disable pattern (L-C12b bug 2) must FAIL;
 # the current real opencode.jsonc (no such block) must NOT trigger it.

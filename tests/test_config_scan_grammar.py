@@ -268,6 +268,82 @@ class TestGeneralisedAcrossEveryToolsGlob:
         assert findings[0].where == 'tools."gleipnir-git_*"'
 
 
+# ---------------------------------------------------------------------------
+# Regression: `tools:`/`permission:` present but NOT a map at all (a
+# bareword scalar, or a `- "..."` list) -- both are legal top-level YAML
+# shapes elsewhere in the accepted grammar subset, so a naive
+# `isinstance(..., dict)`-only check silently emits ZERO findings and lets
+# the malformed value propagate to `enumerate_effective_tools`/
+# `find_mis_scoped_denies`, which then crash with an uncaught
+# AttributeError on `.items()`. This is the earliest checkpoint: catch it
+# here as a GRAMMAR/FAIL Finding instead.
+# ---------------------------------------------------------------------------
+
+class TestNonMapToolsOrPermissionIsAGrammarFailNotASilentPass:
+    def test_bareword_bool_under_top_level_tools_is_a_grammar_fail(self):
+        """`tools: true` -- a bareword boolean scalar where a glob-keyed
+        map is required."""
+        parsed = {"tools": True}
+        findings = cs.check_grammar(parsed)
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.check is cs.FindingCheck.GRAMMAR
+        assert finding.severity is cs.FindingSeverity.FAIL
+        assert finding.where == "tools"
+        assert "map" in finding.detail.lower()
+
+    def test_bareword_scalar_under_permission_is_a_grammar_fail(self):
+        """`permission: deny` -- a bareword string scalar where a
+        verb-keyed map is required."""
+        parsed = {"permission": "deny"}
+        findings = cs.check_grammar(parsed)
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.check is cs.FindingCheck.GRAMMAR
+        assert finding.severity is cs.FindingSeverity.FAIL
+        assert finding.where == "permission"
+        assert "map" in finding.detail.lower()
+
+    def test_list_under_top_level_tools_is_also_a_grammar_fail(self):
+        """A `- "..."` list mistakenly used under `tools:` instead of a
+        map -- also non-dict, also caught here, not just the bool/scalar
+        case."""
+        parsed = {"tools": ["gleipnir-git_*", "gleipnir-pm_*"]}
+        findings = cs.check_grammar(parsed)
+        assert len(findings) == 1
+        assert findings[0].where == "tools"
+        assert findings[0].check is cs.FindingCheck.GRAMMAR
+        assert findings[0].severity is cs.FindingSeverity.FAIL
+
+    def test_list_under_permission_is_also_a_grammar_fail(self):
+        parsed = {"permission": ["allow", "deny"]}
+        findings = cs.check_grammar(parsed)
+        assert len(findings) == 1
+        assert findings[0].where == "permission"
+        assert findings[0].check is cs.FindingCheck.GRAMMAR
+        assert findings[0].severity is cs.FindingSeverity.FAIL
+
+    def test_non_dict_permission_and_non_dict_tools_together_both_reported(self):
+        """Both keys malformed at once must each produce their own
+        Finding -- not "first violation wins"."""
+        parsed = {"permission": True, "tools": 1}
+        findings = cs.check_grammar(parsed)
+        assert len(findings) == 2
+        wheres = {f.where for f in findings}
+        assert wheres == {"permission", "tools"}
+        assert all(f.check is cs.FindingCheck.GRAMMAR for f in findings)
+        assert all(f.severity is cs.FindingSeverity.FAIL for f in findings)
+
+    def test_non_dict_tools_never_raises_even_though_it_is_flagged(self):
+        """The whole point: check_grammar must never propagate an
+        uncaught exception on this input -- it returns a clean
+        discriminated Finding instead."""
+        for bad_value in (True, False, 1, 1.5, "deny", ["a", "b"]):
+            findings = cs.check_grammar({"tools": bad_value})
+            assert len(findings) == 1
+            assert findings[0].where == "tools"
+
+
 class TestFindingShapeIsAlwaysFullyPopulated:
     """Every Finding this check produces must be a fully-populated,
     discriminated record -- never a bare/ambiguous result."""

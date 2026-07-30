@@ -341,6 +341,45 @@ class TestST13aJsoncOverrideSuppliesTheMissingDeny:
         assert effective["notify"] == {"gleipnir-git_*", "gleipnir-pm_*"}
 
 
+class TestNonDictToolsNeverRaisesDefenseInDepth:
+    """Regression for the uncaught-AttributeError gap: `enumerate_
+    effective_tools` must NEVER trust that `check_grammar` ran first --
+    a present-but-non-dict `tools` value (or agent-override equivalent)
+    must be treated as "denies nothing" rather than raising when `.items()`
+    is called on it."""
+
+    def test_bareword_bool_tools_value_does_not_raise_and_denies_nothing(self):
+        agents = {"some-agent": {"tools": True}}
+        effective = cs.enumerate_effective_tools(agents)
+        assert effective == {"some-agent": set()}
+
+    def test_string_tools_value_does_not_raise_and_denies_nothing(self):
+        agents = {"some-agent": {"tools": "deny"}}
+        effective = cs.enumerate_effective_tools(agents)
+        assert effective == {"some-agent": set()}
+
+    def test_list_tools_value_does_not_raise_and_denies_nothing(self):
+        agents = {"some-agent": {"tools": ["gleipnir-git_*"]}}
+        effective = cs.enumerate_effective_tools(agents)
+        assert effective == {"some-agent": set()}
+
+    def test_non_dict_jsonc_override_value_does_not_raise_and_denies_nothing(self):
+        """Same guard, but for the SECOND valid deny location -- the
+        `opencode.jsonc` `agent.<name>.tools` override block."""
+        agents = {"some-agent": {"tools": {"gleipnir-git_*": False}}}
+        overrides = {"some-agent": True}
+        effective = cs.enumerate_effective_tools(agents, overrides)
+        # The malformed override contributes nothing, but the agent's
+        # OWN well-formed frontmatter deny is unaffected.
+        assert effective == {"some-agent": {"gleipnir-git_*"}}
+
+    def test_both_own_tools_and_override_non_dict_at_once_does_not_raise(self):
+        agents = {"some-agent": {"tools": 1}}
+        overrides = {"some-agent": 1.5}
+        effective = cs.enumerate_effective_tools(agents, overrides)
+        assert effective == {"some-agent": set()}
+
+
 class TestST13bNoOpMergeOnTheLiveNoAgentKeyConfig:
     def test_none_overrides_is_a_pure_no_op(self):
         effective_with_none = cs.enumerate_effective_tools(_real_nine_agents(), None)
