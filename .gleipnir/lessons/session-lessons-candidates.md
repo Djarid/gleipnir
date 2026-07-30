@@ -297,6 +297,16 @@ restart-gated like all agent-file changes — takes effect next session.
 
 ---
 
+## L-C14 — The plan-format's decisions-index table is not enforced, so it gets dropped until the operator catches it
+
+**Observed (this session):** three plans (`interactive-session-context-cap.md`, `broker-mcp.md`, `config-scoping-preflight.md`) were completed, spec-reviewed, and treated as "done" without the scannable `## Decisions (index)` table that summarizes every decision the plan fixes — added only retroactively when the operator asked "what about the score cards... there is usually a table of decisions." Each retrofit was accurate and cheap, but the table was absent the first time in every case. The pattern also recurred for methodology itself (running brainstorm/ATLAS was skipped or truncated twice this session and caught by the operator, not the process) — a common root: a good practice that lives only in intent/habit, not in an enforced artifact, silently erodes.
+
+**Proposed lesson:** bake the `## Decisions (index)` table into `goals/plan-format.md` as a REQUIRED section (columns: # | Decision | Chosen | Rejected | Rationale), so `gleipnir-plan` authors it the first time rather than the operator retrofitting it. More broadly: when a repeatedly-dropped good practice is identified, the durable fix is to move it from "orchestrator/planner remembers to do it" into the enforced plan-format/agent-instruction layer — the same principle L-C13 applied to the empty-return discipline and this escalation feature applied to lesson-capture itself.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-07-30 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
