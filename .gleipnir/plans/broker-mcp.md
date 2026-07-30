@@ -17,6 +17,31 @@
 
 ---
 
+## Decisions (index)
+
+Summary of every decision this plan fixes, in order encountered; full reasoning
+for each is in the sections below (rows 0–5 → the CONVERGED brief
+`broker-mcp-brainstorm.md`, operator-converged; rows 6–11 → decisions made
+during planning / spec-review / build, detailed in Trace, Assemble, Stress-test,
+and the "New material tradeoff report").
+
+| # | Decision | Chosen | Rejected | Rationale |
+|---|---|---|---|---|
+| 0 | Broker mechanism | Option B — `mcp`/FastMCP, adopted as an **isolated, out-of-enforcement-core** dependency | Bespoke stdlib-only tool shim (no MCP SDK) | Brokers are Tools/Args-layer, not enforcement core; carving `broker/**` out of the stdlib-only rule legitimises the dep. Operator-converged in the brief |
+| 1 | Scope | git broker + PM broker **only** | Also building the notify broker now (`slack-sdk`) | Notify explicitly **deferred**; keeps the dependency surface minimal. Operator-converged in the brief |
+| 2 | Tool surface | **Pointy 4+4**: git `git_status`/`git_diff`/`commit_changes`/`push_current_branch`; PM `issue_create`/`issue_update`/`issue_comment`/`issue_close` | Porting AETOS's ~21/~27-tool surface (`create_pr`, `git_log`, branch mgmt, milestones, time-tracking, …) | Minimal attack/context surface; no scope creep. Set-equality enforced by T-D. Operator-converged in the brief |
+| 3 | E-1 answer | **Structural refusal in Python** — combined protected-branch + secret-scan pre-commit gate; force-push argv never constructed | Keeping the AETOS-style force-push **pattern denies** (the very weakness E-1 names) | Force-push made *absent*, not *denied* — cannot be expressed. Asserted by T-A. Operator-converged in the brief |
+| 4 | PM broker state | **Stateless, no local cache** (no SQLite); token via `GITLAB_TOKEN`/`GITHUB_TOKEN` env, platform detected from remote | Local SQLite cache (AETOS pattern) | Simpler, no cache-coherence/state surface. Operator-converged in the brief |
+| 5 | Credential posture | **Co-location honestly labelled** — feature closes E-1's argument-policy half only; credential *unreachability* stays open until S-2 | Claiming credential isolation now | Honesty over overclaim; the token/ambient-cred still shares the session trust domain. Recorded in T-E + honesty labels. Operator-converged in the brief |
+| 6 | Dependency packaging | **Per-component independent versioning** — each broker its own `pyproject.toml` + `VERSION` + its own **bounded** MCP-SDK range (e.g. `mcp>=1.0,<2`) | Single top-level `broker` optional-dependency extra; naive open-ended `mcp>=1.0.0` | Mid-build fact: `mcp>=1.0.0` resolves to FastMCP-less `mcp 2.0.0`. A bounded, per-broker range guarantees FastMCP is present and decouples the brokers. **Operator decision made mid-build**; guarded by T-D2 |
+| 7 | `git-ops` allowlist scope | Option (a) — **narrow**: drop only the two force-push denies + MCP-covered write verbs (`git commit*`/`git push*`/`git add*`); **KEEP** `checkout`/`switch`/`branch`/`merge`/`fetch`/`pull` (+`status`) alongside the MCP tools | The draft's silent widening to **delete the entire** bash git allowlist | Deleting all branch/sync verbs risked a **commit deadlock** (protected-branch refusal with no verb to switch off `main`). **Caught by spec-review, converged by the operator** |
+| 8 | Enforcement strictness | **Non-strict by default** — secret-scan + force-push absence always-on SAFETY; protected-branch + data-file checks **opt-in** (`GLEIPNIR_GIT_STRICT`) | Unconditional protected-branch refusal on every `main`/`master` commit | Unconditional refusal bricks trunk-based workflows and **deadlocks autonomous L2/L3 operators**, risking wholesale bypass of the guard. **Found post-implementation during build, operator-converged**; reflected in T-C |
+| 9 | Credential-story clarity | **Two distinct stories** — git `push_current_branch` uses **ambient host SSH / git-credential-helper (no token)**; PM broker uses **env-injected `GITLAB_TOKEN`/`GITHUB_TOKEN`** | Blurring both into one "platform/push token" | The git broker holds no token at all; conflating the two would misstate the trust surface. Clarified in Integrations map + T-E |
+| 10 | Tier-3 capability language | `opencode.jsonc` is **cooperative-policy Tier-3** (a bounded code agent structurally *could* write it today); only `agents/**`/`decisions/**` are **capability-enforced** Tier-3 | Claiming the capability layer prevents an agent touching `opencode.jsonc` today | It sits at repo root, outside `.gleipnir/**`, so the code grant does not deny it — routed to operator by convention, not capability, until S-2/G-1. Matches `context-cap.md:82-84` |
+| 11 | stdlib-only conformance | **Add a NEW broker-scoped conformance test** (T-F) asserting `mcp` appears only under `broker/` (only in `mcp_server.py`) and never in the core | Relying on the existing per-directory meta-tests (which exempt `broker/` **by omission**) | Existing tests scan only their own dirs; exemption-by-omission is silent. A positive assertion converts it to a documented boundary. Test-design recommendation, not a value-choice |
+
+---
+
 ## GOTCHA pre-flight (visible, per methodology)
 
 - **Goals checked (`goals/manifest.md`):** "Plan format" (`plan-format.md`) and
