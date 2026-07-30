@@ -82,6 +82,31 @@ writes are never blocked by read-only or plan mode; writing a plan IS
 planning") is carried forward **unchanged** — it aligns with Gleipnir's
 plan-format requirement (K-1).
 
+## Who loads GOTCHA — the per-role inlining model (intentional, not a gap)
+
+Only `gleipnir-brainstorm` loads `skill gotcha` in its Startup — and only because
+it also loads `brainstorm` + `decision-frameworks` and uses the full 6-layer
+methodology framing. This is **deliberate**, not an oversight:
+
+- **Bounded/mechanical roles inline the slice they use.** notify, project-mgr,
+  git-ops, and session-scribe (Haiku, per the model-sizing principle) each carry
+  the one or two GOTCHA guardrails relevant to their narrow job directly in their
+  own agent file (e.g. notify's "verify outputs vs inputs"; git-ops's "merge, not
+  rebase"; session-scribe's verify-against-disk). Loading the full 349-line skill
+  into every turn of a mechanical role would be a permanent per-turn token cost
+  for content the role cannot use — against the framework's own goal
+  (quality-efficient outcomes per LLM token) and its model-sizing principle
+  ("Haiku for mechanical roles").
+- **Judgment roles also inline, not load.** Even `gleipnir-plan` (runs the GOTCHA
+  pre-flight) and the `orchestrator` (whose identity *is* Amendment 1) inline
+  their relevant discipline rather than load the whole skill; the orchestrator
+  *references* this file in prose deliberately, and stays prose-reference-only.
+
+So "only 1 of 9 agents loads gotcha" is the expected, correct state — evidence of
+per-role inlining, not under-coverage. Do not "fix" it by blanket-adding
+`Load skill gotcha` to every agent. (Decided at the roster-gotcha-loading
+brainstorm; see `plans/roster-gotcha-loading-brainstorm.md`.)
+
 ## Status
 
 **Authored, not yet closed.** These skills are content. The enforcement they

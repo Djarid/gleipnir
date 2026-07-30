@@ -147,3 +147,22 @@ pass and later build-order steps. Durable resolutions live in `decisions/`
 `gleipnir-layout-and-memory-model.md`); transient session records live in
 `plans/` (`step-0-scaffold.md`, `session-01-atlas-brief.md`,
 `session-01-validation.md`, `session-02-*`).
+
+## Tooling notes
+
+Environment tool quirks that affect every agent — *not* framework policy or
+guard semantics. Kept here because `.gleipnir/AGENTS.md` is the only file loaded
+into every session (via `opencode.jsonc` `instructions:`), so a note here
+reaches every agent without per-agent opt-in.
+
+- **`glob` and dot-prefixed directories (`.gleipnir/`, any `.`-prefixed path).**
+  A dot-prefixed directory segment embedded directly in the `pattern` string
+  (e.g. `pattern=".gleipnir/agents/*.md"`) returns **zero matches** even though
+  the directory is real and named literally — the glob engine applies its
+  "skip hidden entries" convention to a segment typed literally in the pattern,
+  where it should not. **Fix:** pass the dot-prefixed portion via the separate
+  `path` parameter and reduce `pattern` to a bare wildcard — e.g.
+  `pattern="*.md", path=".gleipnir/agents"`. "File not found by glob" is **not**
+  proof of absence for dot-prefixed paths; when the pattern embeds a
+  dot-segment, re-run with `path` before concluding a file is missing.
+  (Recorded as L-C16 → L-C17.)

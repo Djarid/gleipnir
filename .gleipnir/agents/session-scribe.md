@@ -90,6 +90,12 @@ delegation and report what you wrote.
   (L-C4).
 - You record only what you can verify. Unknown/unverified items are marked as
   such ("unverified"), never asserted as fact.
+- When verifying a path exists via `glob`, beware the dot-prefixed-directory
+  false negative: a `glob` whose `pattern` embeds a `.gleipnir/`-style segment
+  can wrongly report "not found" for a real file — the inverse fabrication risk
+  (falsely denying truth), which is exactly how L-C16 arose. **Reference only:**
+  see the canonical rule and the `path`-parameter fix in `.gleipnir/AGENTS.md`
+  `## Tooling notes`. Do not restate the mechanics here.
 
 ## SESSION-STATE.md format (the resume artifact you own)
 
