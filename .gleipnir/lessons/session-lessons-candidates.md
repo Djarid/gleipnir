@@ -327,6 +327,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-07-3
 
 ---
 
+## L-C17 — Correction/supersession of L-C16: the glob bug is precise (dot-segment-in-`pattern`), and the fix is `path`, not `read`
+
+**Observed:** L-C16 diagnosed a `glob` false-negative but recommended "use `read` instead of `glob`" — worse advice than warranted, since `read` requires already knowing the exact filename, defeating glob's discovery purpose. Direct comparison testing (orchestrator, this session) isolated the precise trigger: `glob` returns zero matches whenever a **dot-prefixed directory segment is embedded inside the `pattern` string** (e.g. `pattern=".gleipnir/agents/*.md"`) — even though the directory is real and named *literally*, not via wildcard. The SAME dot-directory passed through the separate **`path` parameter** (with `pattern` reduced to a bare wildcard, e.g. `pattern="*.md", path=".gleipnir/agents"`) works correctly and finds every file. Root cause: the glob engine's "skip hidden entries" convention is being applied even to a segment typed literally in the pattern, where it shouldn't apply.
+
+**Corrected lesson (supersedes L-C16's guidance):** when globbing anywhere under `.gleipnir/` or any dot-prefixed directory, always pass the dot-prefixed portion via the `path` parameter, never embed it in `pattern`. This preserves glob's discovery value. L-C16 remains as the historical record of the initial (correct-but-imprecise) observation; this entry supersedes only its *guidance*.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-07-30 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C18 — The orchestrator has no enforced rule to reproduce a subagent's Decision Analysis verbatim; it paraphrased/compressed it twice this session
+
+**Observed (this session, twice):** the orchestrator received a full `## Decision Analysis` (options, weighted matrix, bias check) from `gleipnir-brainstorm`/`gleipnir-plan` and, instead of reproducing it verbatim when presenting to the operator via `question`, wrote its own compressed summary and put *that* into the convergence prompt. This happened once with an ATLAS/decisions-table artifact, and again with a glob-placement Decision Analysis. Both times the operator had to explicitly demand the raw output. The whole point of the convergence gate is that the operator (or any evaluating intelligence, human or automated) converges on the *actual* analysis — scoring, exact pro/con wording, bias flags — not the orchestrator's lossy compression of it, which can drop decision-relevant nuance invisibly.
+
+**Proposed lesson:** bake an explicit, non-negotiable rule into `orchestrator.md`'s convergence-gate discipline: when presenting a subagent's `## Decision Analysis` to the operator, reproduce it **verbatim** (cosmetic reformatting only — e.g. markdown quoting) — never paraphrase, compress, or summarize it into original prose. The operator's `question` prompt must contain or immediately precede the actual analysis text. This is durable/behavioral enough that it may warrant `compaction_survival` frontmatter treatment, not just body prose, given the escalation-obligation bullet already got that treatment for an analogous "don't just mention it, act on it properly" rule.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-07-30 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
