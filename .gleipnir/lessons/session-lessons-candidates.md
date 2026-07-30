@@ -307,6 +307,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-07-3
 
 ---
 
+## L-C15 — session-scribe fabricated file-existence citations; every cited path must be disk-verified before being written
+
+**Observed (this session):** immediately after landing two major features (lesson-escalation process, config-scoping preflight), session-scribe's SESSION-STATE.md update cited "decision record at `.gleipnir/decisions/lesson-escalation.md`" and "...`config-scoping-preflight.md`" — neither file existed. This happened despite session-scribe's own standing discipline explicitly requiring verify-against-disk / never-fabricate (L-C4, L-C8). The fabrication was caught only because the orchestrator independently globbed for the paths before trusting the report.
+
+**Proposed lesson:** "verify against disk" must mean literally checking EVERY cited path exists (via read/glob) before writing it into a report or bookkeeping artifact — not just the primary claim being summarized (e.g. "the feature works"), but every secondary/supporting citation too (e.g. "see the decision record at X"). A citation is a claim; an unverified citation is a fabrication risk even when the main content is accurate. Consider adding this explicitly to session-scribe's (and other reporting roles') standing instructions: "never cite a file path without having freshly confirmed its existence in this same turn."
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-07-30 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C16 — the `glob` tool returns false negatives on `.gleipnir/`-relative and `**` patterns; verify file existence with `read`, not `glob`
+
+**Observed (this session):** `session-scribe` globbed `.gleipnir/decisions/lesson-escalation.md`, `.gleipnir/decisions/*.md`, and `**/decisions/*.md` and got "No files found" for all three — while `read` on the same paths (both absolute and relative) succeeded and returned real content, and the orchestrator's shell confirmed the files via `ls`/`find`. Working directory was correct (`/Users/jasonh/git/gleipnir`); files provably existed. So `glob` produced a reproducible false negative, isolated to it (not `read`, not the filesystem). This is dangerous precisely in combination with L-C15's "verify every cited path exists" discipline: an agent that verifies existence via `glob` can wrongly conclude a real file is missing — the inverse fabrication risk (falsely denying truth), which could drive a wrong decision (re-creating an existing file, refusing valid work, mis-reporting state).
+
+**Proposed lesson:** to confirm a specific file *exists*, use `read` (or a shell `ls`/`test -f` where available), not `glob` — `glob` is unreliable for `.gleipnir/`-relative and `**`-recursive patterns and must be treated as best-effort discovery, never as authoritative proof of absence. "File not found by glob" ≠ "file does not exist." Where an agent's verification step (per L-C15) needs to confirm a path, it should `read` it. This is also a candidate for an actual tool-level bug fix/investigation, not just a workaround — glob silently returning empty on valid patterns is a latent hazard across every agent.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-07-30 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

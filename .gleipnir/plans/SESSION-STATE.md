@@ -11,9 +11,11 @@ All six enforcement guards (G-1..G-6) have real, tested first slices, plus a
 language-agnostic sandbox executor (node profile + broker profile live),
 two broker MCP servers (gleipnir-git / gleipnir-pm with single-holder scoping),
 the tier3-coach skill for control-gap proposals, the session-scribe bookkeeping
-role, and the orchestrator interactive-session context-cap feature. Latest
-committed + pushed state is on `origin` (`git@github.com:Djarid/gleipnir.git`,
-branch `main`). Tests: **broker profile 43 passed; python self-host 476 passed /
+role with Tier-0→Tier-2 lesson-escalation process (A-hybrid; live-verified end-to-end),
+config-scoping preflight (config_scan.py; 143 tests, full coverage, closes L-C12/L-C12b class),
+and the orchestrator interactive-session context-cap feature. Latest committed + pushed
+state is on `origin` (`git@github.com:Djarid/gleipnir.git`, branch `main`).
+Tests: **broker profile 43 passed; config-scan 143 passed; python self-host 476 passed /
 11 skipped**. All features verified live post-restart (git-ops sees 4 git tools,
 zero pm tools; push_current_branch functional in production; dogfood node test
 16/16 pass in-container).
@@ -98,18 +100,56 @@ zero pm tools; push_current_branch functional in production; dogfood node test
    mid-task (blast-radius incident). Budget raised to 30 post-recovery;
    reversion testing green. Lesson L-C11 graduated.
    Commits: merged into main, pushed.
+- **Tier-0→Tier-2 lesson-escalation process (A-hybrid)** — Thu 30 Jul 2026. FULLY LANDED.
+   Extends session-scribe's write grant to `.gleipnir/lessons/session-lessons-candidates.md`
+   (single named file, not blanket lessons/) as interim substitute for not-yet-built G-4c
+   review-gated pipeline. Human review satisfied upstream: orchestrator confirms drafted
+   lesson text via `question` (2-round cap) before delegating append to session-scribe.
+   Full pipeline: brainstorm (alternatives A/A-hybrid/B/C + weighted decision matrix + bias
+   check) → plan (ATLAS Architect/Trace) → spec-review (caught defect: plan claimed
+   compaction-durability not in edit; fixed and re-reviewed) → approved. Live end-to-end
+   verified: L-C14 appended through new process using session-scribe's grant with
+   orchestrator UNCONSTRAINED by build mode. Orchestrator body section ("Lesson-candidate
+   escalation (A-hybrid; standing discipline)") + compaction_survival frontmatter bullet
+   (durability) now in `.gleipnir/agents/orchestrator.md`. 8-step process documented:
+    notice→draft, coalesce-within-one-turn (never pending), present verbatim, confirm,
+    provenance stamp, delegate, verify, report. Superseded earlier tier2-escalation-control-proposal.md
+    sketch (mechanism decision Option A remains valid). Commits: d72eec3 (mechanism) +
+    0b3b0f7 (bundled with config-scan plan). Durable decision record:
+    `.gleipnir/decisions/lesson-escalation.md`; Tier-0 plan docs:
+    `.gleipnir/plans/lesson-escalation-process.md`, `.gleipnir/plans/lesson-escalation-process-brainstorm.md`,
+    `.gleipnir/plans/tier2-escalation-control-proposal.md`.
+- **Config-scoping preflight (config_scan.py) — FULLY IMPLEMENTED.** Thu 30 Jul 2026.
+   Closes L-C12/L-C12b class (restart-only-observable config bugs) by validating agent/config
+   CONTENT (YAML grammar, effective per-agent MCP tool-grant sets) vs OS write/read perms alone.
+   ATLAS plan `.gleipnir/plans/config-scoping-preflight.md` (8 findings fixed, 2 spec-review
+   rounds) + dedicated design-coherence pass (caught argument-order mismatch: tests declared
+   authoritative). Test-first: 6 files, 143 tests (full API specification + incremental build).
+    Implementation: `src/gleipnir/preflight/config_scan.py` (new), wired as `config-scan`
+    subcommand into `src/gleipnir/preflight/__main__.py` (leading-token dispatch, zero behaviour
+    change to boundary check). Two real defects fixed: (a) cross-file glob inconsistency violated
+    Design Consolidation Decision 2; (b) malformed-but-grammar-legal tools:/permission non-dict
+    value crashed uncaught — fixed at primary checkpoint (check_grammar) + defense-in-depth
+    guards with 15 regression tests. Final: 143 tests, 90% line+branch coverage, 619 passed /
+    11 skipped, zero regressions, quality-APPROVED. NOT yet wired to run automatically (git hook,
+    CI) — deferred, needs convergence. Residual fast-follow (non-blocking): config_scan_main
+    jsonc "agent" block assumes dict; malformed opencode.jsonc could raise. Commits: 0b3b0f7
+    (plan+tests) + c3c93ea (implementation). Durable decision record:
+    `.gleipnir/decisions/config-scoping-preflight.md`; Tier-0 plan:
+    `.gleipnir/plans/config-scoping-preflight.md`.
 
 ## Open threads / next
 
-**Wed 29 Jul 2026 — Post-broker-MCP session:**
-- Broker MCP servers live; single-holder scoping verified; E-1 argument-policy structurally closed (credential half open).
-- **MCP-scoping incident (3 distinct bugs found+fixed, session seam):**
-   - Bug 1: `permission.tools` requires `allow/deny/ask`, not booleans (operator caught; fixed).
-   - Bug 2: global-disable-then-per-agent-`permission.tools:allow` does NOT surface MCP tools to subagent (discovered live via git-ops probe; unverified: commit tool missing from function list).
-   - Bug 3: `permission.tools: deny` does NOT gate MCP visibility for a subagent either (discovered via SECOND live probe: git-ops saw pm tools despite deny). Working fix: per-agent scoping ONLY in TOP-LEVEL `tools:` key with booleans (enable globally, deny per-agent).
-   - **Lesson records:** L-C12 (boolean/allow-deny grammar split), L-C12b (deny-list scoping pattern, subagent tool visibility triple-check).
-- **Blast-radius near-miss:** hunk-split commit via `git add -p` DESTROYED 12 tracked files' uncommitted edits mid-task (subagent step cap hit). Recovered by hand-rebuilding from decision records. See lessons L-C11, L-C12, L-C12b for full detail.
-- **Immediate next:** S-2 activation (operator) — dedicated agent uid + chmod OS-ro + G-3 key OS-unreadable + `bin/gleipnir-preflight` enforcement.
+**Thu 30 Jul 2026 — Post-config-scan + lesson-escalation session:**
+- Lesson-escalation process live and end-to-end verified; config_scan.py fully tested & implemented (143 tests, 90% coverage).
+- **Small/immediate:** Bake the `## Decisions (index)` table into `goals/plan-format.md` as a required plan section — from L-C14's own proposed lesson (Tier-3, needs build mode, not yet done).
+- **Deferred convergence items:**
+   - Config_scan hook/CI wiring (follow-on, needs dedicated convergence for when/where to enforce).
+   - Stage-role-map precedence question for prose/config-only plans (flagged during escalation-process plan, not yet ratified).
+- **Confirmed FIXED:**
+   - Empty-return reliability seam (L-C13) FIXED post-restart — last several quality-reviewer/session-scribe delegations this session ended with proper written reports, not empty returns.
+   - Git-ops git diff/log gap (E-seam residual) FIXED and pushed earlier this session (commits included in main).
+- **S-2 activation still deferred** (operator call) — unchanged.
 
 ## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
 
