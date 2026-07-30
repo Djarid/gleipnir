@@ -1262,10 +1262,26 @@ def config_scan_main(argv: list[str] | None = None, config_root: Path | None = N
             unparseables.append(jsonc)
         else:
             jsonc_top_level_tools = jsonc.get("tools")
-            jsonc_agent_overrides = {
-                name: block.get("tools", {})
-                for name, block in jsonc.get("agent", {}).items()
-            }
+            jsonc_agent_block = jsonc.get("agent", {})
+            if not isinstance(jsonc_agent_block, dict):
+                # Defense-in-depth: a present-but-non-dict `agent` value must
+                # never reach `.items()` -- treat it as "no per-agent
+                # overrides" rather than raising. This coercion is
+                # crash-safe only: unlike the frontmatter `tools`/`permission`
+                # case, no grammar Finding is emitted for a malformed jsonc
+                # `agent` shape, so it is not yet surfaced to the operator.
+                jsonc_agent_block = {}
+            jsonc_agent_overrides = {}
+            for name, block in jsonc_agent_block.items():
+                if not isinstance(block, dict):
+                    # Same defense-in-depth: a per-agent block value that is
+                    # not a dict must never reach `.get("tools", {})` --
+                    # treat it as "no tools override" rather than raising.
+                    # Crash-safe only: no grammar Finding is emitted here,
+                    # so this malformed shape is not yet surfaced to the
+                    # operator.
+                    block = {}
+                jsonc_agent_overrides[name] = block.get("tools", {})
 
     # Step 5.
     effective = enumerate_effective_tools(parsed_agents, jsonc_agent_overrides)

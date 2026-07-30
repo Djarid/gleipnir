@@ -354,3 +354,81 @@ class TestConfigScanMainReturnsRefuseExitCode:
         exit_code = cs.config_scan_main(["--override-ack"], config_root=config_root)
         assert exit_code == 2
         assert exit_code != 0
+
+
+class TestNonDictAgentBlockNeverRaises:
+    """Regression for the SAME uncaught-exception class as
+    `TestNonDictToolsNeverRaisesDefenseInDepth`
+    (`test_config_scan_mcp_enum.py`), but for the top-level `agent:` key in
+    `opencode.jsonc` (`config_scan.py:1265-1268`). `config_scan_main` builds
+    `jsonc_agent_overrides` via
+    `{name: block.get("tools", {}) for name, block in
+    jsonc.get("agent", {}).items()}` -- if `agent:` is present but is NOT a
+    dict, `.items()` raises `AttributeError` and the CLI crashes instead of
+    returning a normal exit code. A non-dict `agent:` block must be treated
+    benignly (coerced to "no overrides"), exactly like the existing
+    non-dict `tools:`/`permission:` defense-in-depth handling -- never an
+    uncaught exception escaping `config_scan_main`. Modeled on
+    `TestConfigScanMainReturnsRefuseExitCode.
+    test_missing_opencode_jsonc_refuses_rather_than_crashing`: it must
+    complete and return an `int` exit code rather than propagating."""
+
+    def _write_clean_fixture(self, config_root: Path, jsonc_agent_value: str) -> None:
+        agents_dir = config_root / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "clean-agent.md").write_text("---\nmode: subagent\n---\n")
+        (config_root.parent / "opencode.jsonc").write_text(
+            '{"mcp": {}, "agent": ' + jsonc_agent_value + "}"
+        )
+
+    def test_top_level_agent_as_a_list_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "[]")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_top_level_agent_as_a_string_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, '"not-a-dict"')
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_top_level_agent_as_null_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "null")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_top_level_agent_as_a_bool_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "true")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_top_level_agent_as_an_int_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "1")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_top_level_agent_as_a_float_does_not_raise(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "1.5")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
+
+    def test_per_agent_block_that_is_a_non_dict_bool_does_not_raise(self, tmp_path: Path):
+        """The secondary crash point: `agent:` IS a dict, but an individual
+        per-agent block value is not -- `block.get("tools", {})` then
+        raises `AttributeError` on the bool."""
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, '{"clean-agent": true}')
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert isinstance(exit_code, int)
