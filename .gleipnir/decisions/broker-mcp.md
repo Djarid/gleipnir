@@ -30,8 +30,19 @@ Gleipnir, not copied.
   force parameter; `--force`/`-f` appear in no argv — force-push is
   **structurally absent**, verified by `tests/test_broker_tool_surface.py`
   (asserts no tool input schema has a force param) and by code review.
-  `commit_changes` evaluates `guards.precommit_check` and refuses BEFORE
-  constructing any commit argv (`reset HEAD` on refusal).
+  `commit_changes` runs `guards.precommit_check` on the staged diff AFTER
+  staging but BEFORE the `git commit`, and on a secret finding refuses without
+  committing (`git reset HEAD` — a mixed, index-wide unstage that never touches
+  the working tree). The always-on secret-scan is the only default-blocking
+  check; protected-branch/data-file checks stay opt-in via the `GLEIPNIR_GIT_*`
+  env vars. (HONESTY NOTE: this in-broker enforcement was NOT true when this
+  record was first written — `commit_changes` then ran a plain `git commit` with
+  no policy of its own, and the secret-scan reached agent commits only as a
+  side-effect of the operator's installed `pre-commit` hook firing. The
+  git-enforcement layered design — see
+  `../plans/git-enforcement-plugin.md` — moved the secret-scan into the broker
+  where the staged diff is visible; this line now reflects the implemented code,
+  not an aspiration.)
 
 - **Non-strict by default — the broker must not be so constraining that people
   route around Gleipnir entirely.** A guard that nags more than it protects gets
