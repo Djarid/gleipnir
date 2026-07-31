@@ -62,6 +62,7 @@ __all__ = [
     "FindingSeverity",
     "Finding",
     "check_grammar",
+    "check_jsonc_agent_grammar",
     "enumerate_effective_tools",
     "assert_single_holders",
     "check_fail_open",
@@ -679,6 +680,54 @@ def check_grammar(parsed: dict) -> list[Finding]:
     return findings
 
 
+def check_jsonc_agent_grammar(jsonc_agent_block: object) -> list[Finding]:
+    """Check the opencode.jsonc top-level `agent:` block shape, symmetric
+    with `check_grammar`'s frontmatter non-dict handling above. Called on
+    the RAW (pre-coercion) `jsonc.get("agent", {})` value, per
+    `.gleipnir/plans/jsonc-agent-grammar-finding.md` Trace's "emit-before-
+    coerce" ordering.
+
+    - If `jsonc_agent_block` is not a `dict`: one `GRAMMAR`/`FAIL` Finding,
+      `where="agent"`, naming opencode.jsonc and the expected map shape.
+    - Else: iterate its `.items()`; for each per-agent `block` value that is
+      NOT a `dict`, one `GRAMMAR`/`FAIL` Finding, `where=f"agent.{name}"`.
+      Not first-wins -- every bad per-agent block gets its own Finding.
+    - A well-formed dict-of-dicts (or the default `{}`) -> `[]`.
+
+    Never raises on any input type -- mirrors `check_grammar`'s
+    never-raises-on-well-formed-but-wrong-typed-input contract.
+    """
+
+    if not isinstance(jsonc_agent_block, dict):
+        return [
+            Finding(
+                check=FindingCheck.GRAMMAR,
+                severity=FindingSeverity.FAIL,
+                where="agent",
+                detail=(
+                    "non-map value under opencode.jsonc agent: where a map "
+                    "of agent-name -> per-agent config block is expected"
+                ),
+            )
+        ]
+
+    findings: list[Finding] = []
+    for name, block in jsonc_agent_block.items():
+        if not isinstance(block, dict):
+            findings.append(
+                Finding(
+                    check=FindingCheck.GRAMMAR,
+                    severity=FindingSeverity.FAIL,
+                    where=f"agent.{name}",
+                    detail=(
+                        f"non-map value under opencode.jsonc agent.{name} "
+                        "where a per-agent config map is expected"
+                    ),
+                )
+            )
+    return findings
+
+
 # ---------------------------------------------------------------------------
 # PART 3 OF 6: enumerate_effective_tools + assert_single_holders (check 2).
 #
@@ -1263,13 +1312,23 @@ def config_scan_main(argv: list[str] | None = None, config_root: Path | None = N
         else:
             jsonc_top_level_tools = jsonc.get("tools")
             jsonc_agent_block = jsonc.get("agent", {})
+            # Emit-before-coerce (plan `jsonc-agent-grammar-finding.md`,
+            # Trace "Ordering"): check the RAW value, before any `{}`
+            # coercion below, so a malformed shape is actually reported to
+            # the operator rather than silently dropped. This single call
+            # covers BOTH the top-level non-dict case (`where="agent"`) and
+            # every non-dict per-agent block (`where=f"agent.{name}"`) --
+            # the helper iterates the raw block's `.items()` itself, so no
+            # further emission is needed inside the coercion loop below.
+            findings.extend(check_jsonc_agent_grammar(jsonc_agent_block))
             if not isinstance(jsonc_agent_block, dict):
                 # Defense-in-depth: a present-but-non-dict `agent` value must
                 # never reach `.items()` -- treat it as "no per-agent
                 # overrides" rather than raising. This coercion is
-                # crash-safe only: unlike the frontmatter `tools`/`permission`
-                # case, no grammar Finding is emitted for a malformed jsonc
-                # `agent` shape, so it is not yet surfaced to the operator.
+                # crash-safe only: the operator-facing GRAMMAR/FAIL Finding
+                # for this malformed jsonc `agent` shape was already
+                # emitted above, by `check_jsonc_agent_grammar`, before this
+                # coercion ran.
                 jsonc_agent_block = {}
             jsonc_agent_overrides = {}
             for name, block in jsonc_agent_block.items():
@@ -1277,9 +1336,10 @@ def config_scan_main(argv: list[str] | None = None, config_root: Path | None = N
                     # Same defense-in-depth: a per-agent block value that is
                     # not a dict must never reach `.get("tools", {})` --
                     # treat it as "no tools override" rather than raising.
-                    # Crash-safe only: no grammar Finding is emitted here,
-                    # so this malformed shape is not yet surfaced to the
-                    # operator.
+                    # Crash-safe only: `check_jsonc_agent_grammar` already
+                    # emitted this per-agent block's GRAMMAR/FAIL Finding
+                    # above (it iterates the raw block once); do NOT
+                    # re-emit here.
                     block = {}
                 jsonc_agent_overrides[name] = block.get("tools", {})
 

@@ -357,3 +357,83 @@ class TestFindingShapeIsAlwaysFullyPopulated:
             assert f.severity is cs.FindingSeverity.FAIL
             assert isinstance(f.where, str) and f.where
             assert isinstance(f.detail, str) and f.detail
+
+
+# ---------------------------------------------------------------------------
+# check_jsonc_agent_grammar: the JSONC-side symmetric counterpart to
+# check_grammar's non-dict `tools:`/`permission:` handling above, but for
+# opencode.jsonc's top-level `agent:` block.
+#
+# Spec: `.gleipnir/plans/jsonc-agent-grammar-finding.md`, Trace "The new
+# helper (contract to implement)" + Assemble step 1.
+#
+#     def check_jsonc_agent_grammar(jsonc_agent_block: object) -> list[Finding]:
+#
+# - A non-dict top-level `agent:` value -> one Finding(GRAMMAR, FAIL,
+#   where="agent", detail=<names opencode.jsonc + map>).
+# - A dict whose per-agent block is non-dict -> one Finding per bad block,
+#   where=f"agent.<name>", same check/severity/detail shape.
+# - A well-formed dict-of-dicts (or the default {}) -> [].
+# - Never raises.
+# ---------------------------------------------------------------------------
+
+class TestJsoncAgentBlockGrammar:
+    def test_non_dict_top_level_agent_block_variants_each_produce_one_finding(self):
+        """Every non-dict shape opencode.jsonc's `agent:` key could take --
+        bool, int, float, string, list, null -- must each produce exactly
+        one top-level `where="agent"` GRAMMAR/FAIL finding, with a
+        non-blank detail naming opencode.jsonc and the expected map
+        shape."""
+        for bad_value in (True, False, 1, 1.5, "x", [], None):
+            findings = cs.check_jsonc_agent_grammar(bad_value)
+            assert len(findings) == 1, f"expected exactly one finding for {bad_value!r}"
+            finding = findings[0]
+            assert finding.check is cs.FindingCheck.GRAMMAR
+            assert finding.severity is cs.FindingSeverity.FAIL
+            assert finding.where == "agent"
+            assert isinstance(finding.detail, str) and finding.detail
+            assert "opencode.jsonc" in finding.detail
+            assert "agent" in finding.detail
+            assert "map" in finding.detail.lower()
+
+    def test_non_dict_per_agent_block_produces_one_finding_named_for_the_agent(self):
+        findings = cs.check_jsonc_agent_grammar({"foo": True})
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.check is cs.FindingCheck.GRAMMAR
+        assert finding.severity is cs.FindingSeverity.FAIL
+        assert finding.where == "agent.foo"
+        assert isinstance(finding.detail, str) and finding.detail
+        assert "opencode.jsonc" in finding.detail
+        assert "agent" in finding.detail
+        assert "map" in finding.detail.lower()
+
+    def test_multiple_bad_per_agent_blocks_each_produce_their_own_finding(self):
+        """Not first-wins -- every bad per-agent block gets its own
+        Finding, symmetric with `check_grammar`'s multi-finding
+        behaviour."""
+        findings = cs.check_jsonc_agent_grammar({"foo": True, "bar": [1]})
+        assert len(findings) == 2
+        wheres = {f.where for f in findings}
+        assert wheres == {"agent.foo", "agent.bar"}
+        assert all(f.check is cs.FindingCheck.GRAMMAR for f in findings)
+        assert all(f.severity is cs.FindingSeverity.FAIL for f in findings)
+
+    def test_mixed_good_and_bad_per_agent_blocks_only_flags_the_bad_one(self):
+        findings = cs.check_jsonc_agent_grammar({"good": {"tools": {}}, "bad": 1})
+        assert len(findings) == 1
+        assert findings[0].where == "agent.bad"
+
+    def test_well_formed_dict_of_dicts_or_empty_yields_no_findings(self):
+        assert cs.check_jsonc_agent_grammar({}) == []
+        assert cs.check_jsonc_agent_grammar({"foo": {"tools": {}}}) == []
+
+    def test_non_dict_top_level_variants_never_raise(self):
+        """The whole point, mirroring
+        `test_non_dict_tools_never_raises_even_though_it_is_flagged`: the
+        helper must never propagate an uncaught exception on any non-dict
+        input -- it returns a clean discriminated Finding instead."""
+        for bad_value in (True, False, 1, 1.5, "deny", ["a", "b"], None):
+            findings = cs.check_jsonc_agent_grammar(bad_value)
+            assert len(findings) == 1
+            assert findings[0].where == "agent"

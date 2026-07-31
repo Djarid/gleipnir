@@ -432,3 +432,100 @@ class TestNonDictAgentBlockNeverRaises:
 
         exit_code = cs.config_scan_main([], config_root=config_root)
         assert isinstance(exit_code, int)
+
+
+class TestMalformedJsoncAgentBlockRefuses:
+    """Sibling to `TestNonDictAgentBlockNeverRaises` above (that class's
+    crash-safety guarantees are untouched) -- this class strengthens the
+    assertion from "does not raise" to "actually forces a not-CLOSED
+    verdict". A malformed opencode.jsonc `agent:` block (non-dict
+    top-level, or a non-dict per-agent block) must surface as a
+    GRAMMAR/FAIL finding that flows through `decide_config` to REFUSE
+    (exit 1) by default, or PROCEED_UNCLOSED (exit 2, never 0) under
+    `--override-ack`.
+
+    Spec: `.gleipnir/plans/jsonc-agent-grammar-finding.md`, Assemble step 2
+    / Stress-test items 1-2."""
+
+    def _write_clean_fixture(self, config_root: Path, jsonc_agent_value: str) -> None:
+        """Deliberately DIFFERENT from
+        `TestNonDictAgentBlockNeverRaises._write_clean_fixture`: that class
+        only needs crash-safety (any int exit code), so its bareword
+        `clean-agent.md` is fine even though it leaves both MCP
+        namespaces fail-open (WARN-only there is irrelevant to
+        `isinstance(exit_code, int)`). THIS class asserts an EXACT verdict
+        (`exit_code == 1`), so the fixture must otherwise be `CLOSED` on
+        its own merits -- the single agent denies BOTH default MCP
+        namespaces (`gleipnir-git_*`/`gleipnir-pm_*`), so absent the
+        malformed `agent:` block the only findings would be
+        `OVER_RESTRICTION`/`WARN` (non-strict, does not force refuse) --
+        isolating `exit_code == 1` as caused SOLELY by the malformed jsonc
+        `agent:` block under test, not by an unrelated fail-open finding."""
+        agents_dir = config_root / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "clean-agent.md").write_text(
+            "---\n"
+            "tools:\n"
+            '  "gleipnir-git_*": false\n'
+            '  "gleipnir-pm_*": false\n'
+            "---\n\n# clean agent\n"
+        )
+        (config_root.parent / "opencode.jsonc").write_text(
+            '{"mcp": {}, "agent": ' + jsonc_agent_value + "}"
+        )
+
+    def test_top_level_agent_as_a_list_refuses(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "[]")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_top_level_agent_as_a_string_refuses(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, '"not-a-dict"')
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_top_level_agent_as_a_bool_refuses(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "true")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_top_level_agent_as_an_int_refuses(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "1")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_top_level_agent_as_null_refuses(self, tmp_path: Path):
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "null")
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_per_agent_block_non_dict_refuses(self, tmp_path: Path):
+        """`agent:` IS a dict, but an individual per-agent block value is
+        not -- must ALSO refuse, not just avoid crashing."""
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, '{"clean-agent": true}')
+
+        exit_code = cs.config_scan_main([], config_root=config_root)
+        assert exit_code == 1
+
+    def test_override_ack_escalates_malformed_top_level_agent_to_exit_code_2(
+        self, tmp_path: Path
+    ):
+        """`--override-ack` mirrors the existing REFUSE-escalation
+        convention: PROCEED_UNCLOSED (exit 2), never CLOSED (exit 0)."""
+        config_root = tmp_path / ".gleipnir"
+        self._write_clean_fixture(config_root, "[]")
+
+        exit_code = cs.config_scan_main(["--override-ack"], config_root=config_root)
+        assert exit_code == 2
+        assert exit_code != 0
