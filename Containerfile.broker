@@ -15,6 +15,13 @@
 # python:3.12-slim, same digest-pinned base as the python profile (./Containerfile).
 FROM docker.io/library/python:3.12-slim@sha256:55842c72c6b3584d06ec84c731fc516b30b8a53ad262ebd085e47ab568b3bfc1
 
+# git binary: the broker MCP servers shell out to `git` (git_status/git_diff/
+# commit_changes/push_current_branch), and the broker test suite builds real temp
+# repos (git init/add/commit) to exercise commit_changes' post-stage secret-scan.
+# Installed at build time so test runs need NO network (--network=none holds).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dev test tooling + the broker-layer runtime dep (bounded to the FastMCP-bearing
 # 1.x line). Pre-installed so test runs need NO network (--network=none holds).
 RUN pip install --no-cache-dir "pytest>=8,<9" "pytest-cov>=5,<6" "mcp>=1.0,<2"

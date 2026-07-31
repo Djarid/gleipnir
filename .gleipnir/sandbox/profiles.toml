@@ -37,7 +37,7 @@ test_selector_prefix = true
 # resolved via `podman inspect ... --format '{{.Digest}}'`.
 [profile.node]
 image = "localhost/gleipnir-sandbox-node@sha256:5e2e0acaaa4cfc5cea4c44a09f50b94e07f71c499eeed5a7e56090c28baa3409"
-test = ["node", "--experimental-strip-types", "--test", "tests/test_sequence_gate.mjs"]
+test = ["node", "--experimental-strip-types", "--test", "tests/test_sequence_gate.mjs", "tests/test_git_guard.mjs"]
 lint = ["node", "--experimental-strip-types", "--check", "tests/test_sequence_gate.mjs"]
 # D5 honest degradation: node built-in coverage (node --experimental-test-coverage)
 # deferred; this slice proves the zero-dep .mjs cross-language seam only.
@@ -56,8 +56,8 @@ test_selector_prefix = false
 # ./Containerfile.broker (python:3.12-slim + pytest/pytest-cov + mcp 1.x);
 # local digest resolved via `podman inspect ... --format '{{.Digest}}'`.
 [profile.broker]
-image = "localhost/gleipnir-sandbox-broker@sha256:7ffb1c282cc1fd94965615cec5cf807c70782d3be6e53425e070b67987c5cf91"
-test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py"]
+image = "localhost/gleipnir-sandbox-broker@sha256:549eeaa9e86ad977cea43eabbdd332f9889798a1c5bc4058dcc3e356faf16aea"
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py", "tests/test_broker_git_commit_guard.py"]
 lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
 coverage = { args = ["--cov=src/gleipnir/broker", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
 test_selector_prefix = false
