@@ -46,12 +46,16 @@ def test_project_mgr_and_notify_never_allowed():
         assert role not in ROLE_STATES
 
 
-def test_gleipnir_plan_maps_to_brainstorm_and_plan_exactly():
-    assert ROLE_STATES["gleipnir-plan"] == frozenset(
-        {PipelineState.BRAINSTORM, PipelineState.PLAN}
+def test_gleipnir_plan_maps_to_plan_exactly():
+    assert ROLE_STATES["gleipnir-plan"] == frozenset({PipelineState.PLAN})
+    assert "gleipnir-plan" in allowed_agents_for(PipelineState.PLAN)
+
+
+def test_gleipnir_brainstorm_maps_to_brainstorm_exactly():
+    assert ROLE_STATES["gleipnir-brainstorm"] == frozenset(
+        {PipelineState.BRAINSTORM}
     )
-    for state in (PipelineState.BRAINSTORM, PipelineState.PLAN):
-        assert "gleipnir-plan" in allowed_agents_for(state)
+    assert "gleipnir-brainstorm" in allowed_agents_for(PipelineState.BRAINSTORM)
 
 
 def test_quality_reviewer_maps_to_spec_review_and_quality_exactly():
@@ -77,7 +81,7 @@ def test_git_ops_maps_to_git_exactly():
 
 def test_each_state_allows_exactly_its_bound_role_and_no_other():
     expected = {
-        PipelineState.BRAINSTORM: {"gleipnir-plan"},
+        PipelineState.BRAINSTORM: {"gleipnir-brainstorm"},
         PipelineState.PLAN: {"gleipnir-plan"},
         PipelineState.SPEC_REVIEW: {"quality-reviewer"},
         PipelineState.TEST: {"gleipnir-code"},
@@ -101,3 +105,21 @@ def test_unknown_state_denies_by_default():
 def test_allow_table_values_are_frozensets():
     for value in ALLOW_TABLE.values():
         assert isinstance(value, frozenset)
+
+
+def test_role_states_matches_canonical_stage_role_map():
+    """Role-axis SSOT/parity: ROLE_STATES must mirror stage-role-map.md
+    exactly. A future roster/binding change not reflected here fails this
+    test immediately (L-C20 — closes the drift class that hid the missing
+    gleipnir-brainstorm binding). The literal below is the single audited
+    transcription point of .gleipnir/stage-role-map.md's table."""
+    canonical = {
+        "gleipnir-brainstorm": frozenset({PipelineState.BRAINSTORM}),
+        "gleipnir-plan": frozenset({PipelineState.PLAN}),
+        "quality-reviewer": frozenset(
+            {PipelineState.SPEC_REVIEW, PipelineState.QUALITY}
+        ),
+        "gleipnir-code": frozenset({PipelineState.TEST, PipelineState.CODE}),
+        "git-ops": frozenset({PipelineState.GIT}),
+    }
+    assert dict(ROLE_STATES) == canonical

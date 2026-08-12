@@ -9,9 +9,9 @@ editable copy of sequencing logic:
   * ``gleipnir.engine.PipelineState`` — the engine's own enum (order/
     transitions remain ``TRANSITIONS``'s job, untouched here).
   * ``ROLE_STATES`` — the role -> bound-states binding lifted directly from
-    ``.gleipnir/stage-role-map.md``'s table (brainstorm/plan -> gleipnir-plan;
-    spec-review/quality -> quality-reviewer; test/code -> gleipnir-code;
-    git -> git-ops).
+    ``.gleipnir/stage-role-map.md``'s table (brainstorm -> gleipnir-brainstorm;
+    plan -> gleipnir-plan; spec-review/quality -> quality-reviewer;
+    test/code -> gleipnir-code; git -> git-ops).
 
 ``ALLOW_TABLE`` is *computed* from those two by iterating every
 ``PipelineState`` member and collecting the roles bound to it — it is a
@@ -53,7 +53,8 @@ __all__ = [
 # per-state table below is *derived* from it, not written by hand a second
 # time.
 ROLE_STATES: Mapping[str, frozenset[PipelineState]] = {
-    "gleipnir-plan": frozenset({PipelineState.BRAINSTORM, PipelineState.PLAN}),
+    "gleipnir-brainstorm": frozenset({PipelineState.BRAINSTORM}),
+    "gleipnir-plan": frozenset({PipelineState.PLAN}),
     "quality-reviewer": frozenset(
         {PipelineState.SPEC_REVIEW, PipelineState.QUALITY}
     ),
