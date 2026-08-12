@@ -22,7 +22,7 @@ file combined with a stale `ROLE_STATES` binding in `allow_table.py` that predat
 `gleipnir-brainstorm`/`gleipnir-plan` role split (now fixed, commit `58dcbeea`, with an
 L-C20 parity-test guard against recurrence). Latest committed + pushed state is on `origin`
 (`git@github.com:Djarid/gleipnir.git`, branch `main`).
-Tests: **broker profile 51 passed; python self-host 641 passed / 12 skipped; node profile 29 passed**.
+Tests: **broker profile 51 passed; python self-host 669 passed / 12 skipped; node profile 29 passed**.
 All features verified live post-restart (git-ops sees 4 git tools, zero pm tools;
 push_current_branch functional in production; dogfood node test 16/16 pass in-container).
 
@@ -67,18 +67,25 @@ push_current_branch functional in production; dogfood node test 16/16 pass in-co
    working-tree probe, to catch config-hidden regressions). Skips cleanly in environments
    without usable git tooling (e.g., `bin/gleipnir-sandbox test` in python:3.12-slim).
    Plan: `.gleipnir/plans/bin-executable-bit-fix.md` (Phase 1 B, agent-buildable, now complete).
-- **Tier3-coach plans: bridge recovery + bin-executable 2-3 (NOT YET APPLIED)** — Two
-   spec-review APPROVED plans, ready for operator build-mode session (Tier-3 writes):
-   - `.gleipnir/plans/bridge-recovery.md`: L-C19 outcome. Adds `bridge-status` / `bridge-reset`
-     subcommands to `bin/gleipnir-preflight` to inspect/clear stale G-5 bridge file (the root
-     cause of this session's blocked pipeline). Includes companion permission-hardening diff
-     for `gleipnir-code.md` (adds `"src/gleipnir/preflight/**": deny` so recovery tool source
-     stays agent-unreachable).
-   - `.gleipnir/plans/bin-executable-bit-fix.md` (Phases 2-3, NOT YET APPLIED): Phase 2
-     produces exact diffs for `.gleipnir/plugins/git-guard.ts` + `tests/test_git_guard.mjs`
-     (C layer, fail-closed gate pre-check + subclass); Phase 3 produces decision-record text.
-     Phase 1 (B, the test) already committed and passing. Both plans explicitly deferred to
-     operator (no roster agent executes Phase 2–3 code).
+- **Tier3-coach plans: bridge recovery + bin-executable 2-3 (APPLIED, this session)**
+  — Both spec-review APPROVED plans now APPLIED and committed in build mode:
+  - **Bridge recovery (L-C19)** — commit `1c91a19`. Adds `bridge-status` / `bridge-reset`
+    subcommands to `bin/gleipnir-preflight` to inspect/clear stale G-5 bridge file.
+    Implementation: `src/gleipnir/preflight/bridge_recovery.py` (bridge-status reads only,
+    classifies as healthy/stale/corrupt-or-tampered/absent; bridge-reset deletes bridge only,
+    requires `--confirm-clear` + `GLEIPNIR_OPERATOR_UID` opt-in, never re-mints state,
+    refusal guard if invoked by non-operator uid, appends to `.gleipnir/logs/bridge-recovery.log`).
+    Dispatch added to `src/gleipnir/preflight/__main__.py`. Companion permission-hardening:
+    `gleipnir-code.md` now contains `"src/gleipnir/preflight/**": deny` (recovery tool source
+    stays agent-unreachable). Decision record: `.gleipnir/decisions/bridge-recovery-path.md`.
+    Tests: 669 passed / 12 skipped (test_bridge_recovery.py, 90% coverage on the new module).
+  - **Git-guard diagnosability (bin-executable-bit-fix Phases 2–3)** — commit `42a4de5`.
+    Phase 1 (test) was committed earlier; Phases 2–3 (implementation + decision record) now applied.
+    `.gleipnir/plugins/git-guard.ts` now distinguishes a broken/missing preflight tool
+    (`PreflightUnavailable`, still fail-closed) from a config-scan REFUSE, so a future
+    occurrence is one-line "chmod this" fix rather than multi-step investigation.
+    Decision record: `.gleipnir/decisions/bin-executable-bit.md`. Node tests 15 pass / 0 fail.
+    Both commits spec-review APPROVED and quality APPROVED before commit.
 - **Glob-guidance + GOTCHA-inlining policy (commits eb5c893, 0b221a3)** — Two
   converged+planned+spec-reviewed threads, applied to Tier-3: `.gleipnir/AGENTS.md`
   gained `## Tooling notes` section (canonical glob/`path` rule); `.gleipnir/agents/session-scribe.md`
@@ -227,13 +234,12 @@ push_current_branch functional in production; dogfood node test 16/16 pass in-co
   + stale ROLE_STATES binding predating the brainstorm/plan split. **Root-cause commits:**
   `58dcbeea` (allow_table.py fix), `9645974` (bin/gleipnir-preflight perm fix), `6283cba`
   (test_bin_executable.py regression guard).
-- **Immediate next (spec-review APPROVED, ready for operator build-mode session):**
-  - `.gleipnir/plans/bridge-recovery.md` — Adds recovery subcommands + companion permission-hardening diff.
-  - `.gleipnir/plans/bin-executable-bit-fix.md` (Phases 2–3) — Tier-3 gate layer + decision record (Phase 1 test already committed).
-  Both plans are NOT executed by roster agents; operator applies them via `/build` escape hatch.
 - **L-C19 and L-C20 recorded in lessons file** — now formally captured as candidate lessons:
    L-C19 (recovery-path as required design question for fail-closed gates); L-C20 (parity test
    guards drift in "derived, not duplicated" projections). Both dated 2026-08-12.
+- **Bridge-recovery Open Question #1 (deferred)** — whether the 1-hour freshness window on the
+   G-5 bridge should be revisited. Recorded in `.gleipnir/plans/bridge-recovery-brainstorm.md`;
+   explicitly undecided, pending operator convergence. Does not block the implemented recovery tool.
 - **`## Session resume` section in `.gleipnir/AGENTS.md` now live (RESTART-GATED)** — Applied to Tier-3;
    takes effect on the very next session start. The next orchestrator session will be the first to
    exercise the new auto-resume instruction (read SESSION-STATE.md conditional on real prior work).
