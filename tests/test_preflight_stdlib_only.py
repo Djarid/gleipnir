@@ -73,7 +73,7 @@ class TestPreflightPackageIsStdlibOnly:
 
     def test_only_the_expected_preflight_submodules_exist(self):
         names = {p.stem for p in _preflight_py_files()}
-        assert {"__init__", "boundary", "__main__"} <= names
+        assert {"__init__", "boundary", "__main__", "bridge_recovery"} <= names
 
     def test_no_os_access_usage_anywhere_in_the_package(self):
         """Reviewer-enforced constraint (plan Assemble step 3 / Execution

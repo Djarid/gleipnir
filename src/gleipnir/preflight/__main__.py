@@ -24,6 +24,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import bridge_recovery
 from . import config_scan
 from .boundary import Verdict, run_preflight
 
@@ -80,6 +81,12 @@ def main(argv: list[str] | None = None) -> int:
     """
 
     resolved_argv = sys.argv[1:] if argv is None else argv
+
+    if resolved_argv and resolved_argv[0] == "bridge-status":
+        return bridge_recovery.bridge_status_main(list(resolved_argv[1:]))
+
+    if resolved_argv and resolved_argv[0] == "bridge-reset":
+        return bridge_recovery.bridge_reset_main(list(resolved_argv[1:]))
 
     if resolved_argv and resolved_argv[0] == "config-scan":
         config_root = None

@@ -13,6 +13,7 @@ permission:
     "*": allow
     ".gleipnir/**": deny
     ".git/**": deny
+    "src/gleipnir/preflight/**": deny
   read: allow
   task: deny
   webfetch: deny
