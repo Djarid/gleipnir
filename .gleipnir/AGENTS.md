@@ -148,6 +148,35 @@ pass and later build-order steps. Durable resolutions live in `decisions/`
 `plans/` (`step-0-scaffold.md`, `session-01-atlas-brief.md`,
 `session-01-validation.md`, `session-02-*`).
 
+## Session resume
+
+The framework keeps a single resume entry point at
+`.gleipnir/plans/SESSION-STATE.md`. Kept here because `.gleipnir/AGENTS.md` is
+the only file loaded into every session (via `opencode.jsonc` `instructions:`),
+so a resume note here reaches the orchestrator without per-agent opt-in.
+
+- **Orchestrator, at session start:** if `.gleipnir/plans/SESSION-STATE.md` is
+  present and describes real prior work, read it first to pick up in-flight
+  threads (open items, restart-gated changes, "next" actions) so a fresh session
+  can resume without the operator pointing you there manually. If the file is
+  absent, or contains only stale-example text with no real prior work (e.g. on a
+  fresh clone), treat it as "no session to resume" and proceed normally — it is
+  never a hard dependency.
+- **It is a pointer, not authoritative.** SESSION-STATE.md is Tier-0, disposable,
+  and by its own header **not authoritative**. Use it only to orient and find
+  where in-flight work lives; the authoritative homes are `../decisions/`
+  (durable decision records) and the spec (Part D E-seams). Never treat its
+  contents as ground truth — follow its pointers to the authoritative sources
+  before acting on anything material.
+- **Subagents: skip this.** If you are a bounded subagent (`gleipnir-brainstorm`,
+  `gleipnir-plan`, `gleipnir-code`, `quality-reviewer`, `git-ops`, `project-mgr`,
+  `notify`), your delegation is authoritative for your task — you do **not** need
+  to read SESSION-STATE.md. Work from the scoped delegation you were handed.
+  Reading the resume file wastes context on state your bounded task does not
+  need. (**Exception: `session-scribe`.** It *owns and churns* SESSION-STATE.md,
+  so it reads the file to maintain it against current disk state — not to resume
+  work. This is bookkeeping, not resume, and is expected.)
+
 ## Tooling notes
 
 Environment tool quirks that affect every agent — *not* framework policy or
