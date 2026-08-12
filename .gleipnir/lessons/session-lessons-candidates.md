@@ -347,6 +347,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-07-3
 
 ---
 
+## L-C19 — No roster role can inspect or clear a stuck/stale G-5 pipeline bridge; a blocked armed run has no in-framework recovery path
+
+**Observed (this session):** investigating a report of a blocked/inaccessible session led to `.gleipnir/var/run/pipeline-state.json` — the G-5 engine's signed state bridge that `sequence-gate.ts` reads before allowing any `task` delegation. The file was stale (minted ~17 days before the check, versus the gate's 1-hour freshness window), which would fail-closed EVERY delegation for any session that armed (`GLEIPNIR_PIPELINE=on`) against it. But no roster agent's permission grant covers `.gleipnir/var/run/` at all: `gleipnir-code`/`gleipnir-plan`/`gleipnir-brainstorm` deny all of `.gleipnir/**` except their own `plans/**`; `session-scribe` holds only `plans/**` + `var/tmp/**` + one named lessons file; `git-ops` holds no edit/write capability whatsoever. The orchestrator itself holds no edit/bash. So once a session becomes armed against a stale/corrupt bridge, there is structurally no in-framework actor who can diagnose-and-clear it — only the operator, out of band, can.
+
+**Proposed lesson:** a fail-closed enforcement mechanism (the G-5 bridge) needs a paired, equally-deliberate RECOVERY path, not just a block path — otherwise "blocked" degenerates into "permanently inaccessible until the operator manually intervenes outside the framework," which is a worse failure mode than the one the gate prevents. Before (or alongside) arming a gate like this, define who/what may inspect and reset its state file when it goes stale/corrupt (e.g. a narrow, audited write grant, or a mechanical self-clearing/re-mint-on-next-run behavior), and treat "how does this guard get un-stuck" as a required design question for every new fail-closed mechanism, not an afterthought.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C20 — A "derived, not hand-maintained" table can still silently drift if its authored input isn't updated when the roster changes
+
+**Observed (this session):** `src/gleipnir/engine/allow_table.py` computes `ALLOW_TABLE` by projecting `ROLE_STATES` over every `PipelineState` — explicitly designed (per its own docstring) to avoid a hand-maintained parallel copy of the stage-role bindings. But `ROLE_STATES` still reads `"gleipnir-plan": frozenset({PipelineState.BRAINSTORM, PipelineState.PLAN})` and contains no entry for `"gleipnir-brainstorm"` anywhere — a binding that predates the roster split that created `gleipnir-brainstorm` as its own role (per `stage-role-map.md`: brainstorm → `gleipnir-brainstorm`, plan → `gleipnir-plan`, two distinct roles specifically so the precept-10 convergence gate has a dedicated owner). The derivation mechanism worked exactly as designed; it just derived from a stale authored source that nobody revisited when the roster changed.
+
+**Proposed lesson:** "derived, not duplicated" removes the two-copies-drift-apart failure mode, but it does NOT remove the need to update the one authored source when an upstream authority (here, `stage-role-map.md`) changes — a derivation is only as current as its input. When a roster/stage-binding change is made (Tier-3, operator-authored), treat every module whose docstring claims to derive from that binding (grep for the map's role names) as a required companion-check, not an optional follow-up — ideally backed by a parity test that fails when a roster role name has no `ROLE_STATES` entry it should have, not just one that checks the enum is fully covered.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

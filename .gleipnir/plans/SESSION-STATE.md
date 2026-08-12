@@ -13,12 +13,14 @@ two broker MCP servers (gleipnir-git / gleipnir-pm with single-holder scoping),
 the tier3-coach skill for control-gap proposals, the session-scribe bookkeeping
 role with Tier-0→Tier-2 lesson-escalation process (A-hybrid; live-verified end-to-end),
 config-scoping preflight (config_scan.py; 143 tests, full coverage, closes L-C12/L-C12b class),
+git-enforcement via layered plugin (config-scan gate) + broker (always-on secret-scan),
+lesson corrections/additions (L-C16→L-C17 glob-fix guidance, L-C18 verbatim-reproduction rule),
+glob-guidance + GOTCHA-inlining policy (Tier-3 edits applied; take effect next session),
 and the orchestrator interactive-session context-cap feature. Latest committed + pushed
 state is on `origin` (`git@github.com:Djarid/gleipnir.git`, branch `main`).
-Tests: **broker profile 43 passed; config-scan 143 passed; python self-host 476 passed /
-11 skipped**. All features verified live post-restart (git-ops sees 4 git tools,
-zero pm tools; push_current_branch functional in production; dogfood node test
-16/16 pass in-container).
+Tests: **broker profile 51 passed; python self-host 639 passed / 11 skipped; node profile 29 passed**.
+All features verified live post-restart (git-ops sees 4 git tools, zero pm tools;
+push_current_branch functional in production; dogfood node test 16/16 pass in-container).
 
 ## Built slices (verified against disk / commits)
 
@@ -42,6 +44,46 @@ zero pm tools; push_current_branch functional in production; dogfood node test
   multi-language targets.
 - **session-scribe** (this slice) — Tier-0-scoped bookkeeping writer + the
   resume mechanism (this file). See `../decisions/session-scribe.md`.
+- **Lesson corrections/additions (commit 4135546)** — L-C16 glob-bug guidance
+  corrected via L-C17 (the fix: `path` param, not "use read"); L-C18 added
+  (orchestrator must reproduce subagent Decision Analysis verbatim, not paraphrase).
+  File: `.gleipnir/lessons/session-lessons-candidates.md` (verified: L-C16–L-C18 present).
+- **Glob-guidance + GOTCHA-inlining policy (commits eb5c893, 0b221a3)** — Two
+  converged+planned+spec-reviewed threads, applied to Tier-3: `.gleipnir/AGENTS.md`
+  gained `## Tooling notes` section (canonical glob/`path` rule); `.gleipnir/agents/session-scribe.md`
+  gained reference-only glob pointer bullet; `.gleipnir/skills/README.md` gained
+  `## Who loads GOTCHA` intentional-policy note. Plans: `glob-guidance-placement.md`,
+  `roster-gotcha-loading.md`. **RESTART-GATED**: take effect next session.
+- **jsonc agent-block: crash-fix then GRAMMAR finding (commits 981623b, 98ec0c5, 9837d6d)**
+  — First made `config_scan_main` crash-safe on non-dict `agent:` block (residual
+  fast-follow, +7 tests). Then added `check_jsonc_agent_grammar` helper emitting
+  GRAMMAR/FAIL finding (+13 tests; emit-before-coerce ordering; 91% coverage).
+  File: `src/gleipnir/preflight/config_scan.py`, `tests/test_config_scan_grammar.py`,
+  `tests/test_config_scan_cli.py`. Durable decisions in plans: `jsonc-agent-grammar-finding.md`.
+  **CLOSES**: config_scan hook/CI wiring precursor (now superseded by Approach C);
+  residual jsonc fast-follow. **CLOSES**: config_scan not auto-wired note
+  (now wired via git-guard plugin, once it takes effect next session).
+- **Git-enforcement via layered plugin + broker (Approach C) — commits 9cf8c96, 73f754b**
+  — Operator-redirected away from git pre-commit hook/CI (principle: no non-Tier-3
+  outbreak controls) toward opencode-plugin + broker split. Approach C: config-scan
+  in plugin, secret-scan in broker; D9 compliance: ALWAYS-ACTIVE plugin, exit-2
+  escape valve. Delivered:
+  - `src/gleipnir/broker/git/mcp_server.py`: `commit_changes` now runs ALWAYS-ON
+    secret-scan (guards.precommit_check) POST-STAGE/PRE-COMMIT, reset HEAD on finding.
+    +7 broker tests (`test_broker_git_commit_guard.py`). Also fixed 3 false doc-claim
+    strings (module docstring, commit_changes docstring, FastMCP instructions).
+  - `.gleipnir/plugins/git-guard.ts` (Tier-3, NEW): opencode plugin on `gleipnir-git_*`
+    tools; shells out to `bin/gleipnir-preflight config-scan`; exit 0/1/2 semantics
+    (0=allow, 1=abort, 2=warn-proceed, other=fail-closed). +13 plugin tests
+    (`test_git_guard.mjs`).
+  - `Containerfile.broker`: added `git` binary (broker image lacked it; unblocked tests).
+    Rebuilt; digest re-pinned in `.gleipnir/sandbox/profiles.toml`.
+  - `.gleipnir/decisions/broker-mcp.md`: fixed SECURITY-HONESTY DRIFT (D2) — it falsely
+    claimed `commit_changes` ran precommit_check when code ran plain `git commit`;
+    now accurate + honesty note that this was aspirational-until-this-change.
+  - **Verification**: broker profile 51 passed/0 failed; python 639/11; node 29 passed.
+    No regressions. Plans: `git-enforcement-plugin.md` (spec-review approved).
+  - **RESTART-GATED**: plugin takes effect next session.
 - **Orchestrator interactive-session context-cap** — Tue 28 Jul 2026.
    Orchestrator runs on capped model `aperture-anthropic/anthropic.claude-opus-4-8-capped`
    (limit.context 250000 / output 32000, declared in `opencode.jsonc`);
@@ -140,16 +182,23 @@ zero pm tools; push_current_branch functional in production; dogfood node test
 
 ## Open threads / next
 
-**Thu 30 Jul 2026 — Post-config-scan + lesson-escalation session:**
-- Lesson-escalation process live and end-to-end verified; config_scan.py fully tested & implemented (143 tests, 90% coverage).
+**Mon 3 Aug 2026 — Post-git-enforcement session:**
+- Session completed four major threads: lesson corrections (L-C16–C18), glob-guidance+GOTCHA policy (Tier-3 edits), jsonc grammar finding, and layered git-enforcement (plugin + broker secret-scan).
+- Test counts updated: broker profile 51 passed; python 639/11 skipped; node 29 passed.
 - **Small/immediate:** Bake the `## Decisions (index)` table into `goals/plan-format.md` as a required plan section — from L-C14's own proposed lesson (Tier-3, needs build mode, not yet done).
 - **Deferred convergence items:**
-   - Config_scan hook/CI wiring (follow-on, needs dedicated convergence for when/where to enforce).
    - Stage-role-map precedence question for prose/config-only plans (flagged during escalation-process plan, not yet ratified).
-- **Confirmed FIXED:**
+- **NEW follow-up candidate:** `src/gleipnir/broker/git/mcp_server.py` line coverage is 52% (guard path covered; other broker tool functions not) — a test-authoring follow-up to close gaps.
+- **Confirmed FIXED/CLOSED:**
+   - Config_scan hook/CI wiring precursor (superseded by Approach C, git-guard plugin).
+   - Residual jsonc fast-follow (crash-safe + GRAMMAR finding applied).
+   - Config_scan not auto-wired note (now wired via git-guard plugin; takes effect next session).
    - Empty-return reliability seam (L-C13) FIXED post-restart — last several quality-reviewer/session-scribe delegations this session ended with proper written reports, not empty returns.
    - Git-ops git diff/log gap (E-seam residual) FIXED and pushed earlier this session (commits included in main).
 - **S-2 activation still deferred** (operator call) — unchanged.
+- **RESTART-GATED changes (take effect next session):**
+   - Tier-3 edits: glob-guidance Tooling notes, session-scribe glob pointer, skills/README GOTCHA-inlining policy.
+   - Git-guard plugin: config-scan gate on all gleipnir-git_* writes.
 
 ## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
 
@@ -171,17 +220,19 @@ zero pm tools; push_current_branch functional in production; dogfood node test
 - **Rust/C/C++ sandbox profiles** + the offline-deps fetch-then-seal decision.
 - **`bin/gleipnir-sandbox lint`** fails writing `__pycache__` under the ro `src`
    mount (pre-existing, all files).
-- **git-ops allowlist** lacks `git diff`/`git log` (read-only inspection gap).
 - **Option C — plugin-hosted typed bookkeeping tools** (the session-scribe
    graduation target; not built).
-- **quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x earlier
-   session — a reliability seam; the orchestrator had to self-verify plans by
-   direct read). Worth a candidate lesson.
 - ~~**Broker guard policy enforcement:** secret-scan / branch-protection / data-file
    checks NOT enforced by broker (avoids AETOS's false-positive lockup problem) —
    they belong in git hooks. See `.gleipnir/plans/precommit-hook-control-proposal.md`
    (proposal; not yet operator-applied — a tier3-coach output).~~ **CLOSED** — pre-commit
-   hook applied, activated, and verified (see Built slices).
+   hook applied, activated, verified (see Built slices). **EVOLVED** — git-enforcement
+   now layered (config-scan in plugin, secret-scan in broker) per Approach C (commits
+   9cf8c96, 73f754b); takes effect next session after restart.
+- ~~**quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x earlier
+   session — a reliability seam; the orchestrator had to self-verify plans by
+   direct read). Worth a candidate lesson.~~ **CLOSED** — empty-return discipline
+   baked into all 8 subagent files (L-C13 fix), verified this session.
 
 ## Where to look
 
