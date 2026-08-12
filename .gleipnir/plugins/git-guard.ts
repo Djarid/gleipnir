@@ -49,6 +49,7 @@
 // .gleipnir/plans/git-enforcement-plugin.md and decisions/broker-mcp.md.
 
 import { spawnSync } from "node:child_process"
+import { accessSync, constants } from "node:fs"
 import { join } from "node:path"
 
 // The two gleipnir-git broker write tools this gate covers. config-scan is a
@@ -73,19 +74,42 @@ const EXIT_PROCEED_UNCLOSED = 2
 
 class GitGuardAbort extends Error {}
 
+// Distinct from GitGuardAbort-for-REFUSE: the preflight TOOL itself is broken /
+// missing / not executable — a broken PREREQUISITE, not a policy rejection.
+// Still a GitGuardAbort subclass so the hook's fail-closed catch (below) aborts
+// exactly as before; the subclass only lets tests/callers tell the two apart.
+// Exported (alongside runConfigScan/decideFromExit) so the test can import it.
+export class PreflightUnavailable extends GitGuardAbort {}
+
 // Run `bin/gleipnir-preflight config-scan` in the repo dir and return its exit
 // code. Pure-ish (does IO); exported for the golden-fixture conformance test,
 // which drives it against a stub CLI in a temp dir.
 export function runConfigScan(directory: string): { code: number; stderr: string } {
   const cli = join(directory, PREFLIGHT_REL)
+  // Pre-check: is the preflight tool present AND executable? A non-executable or
+  // missing CLI is a BROKEN PREREQUISITE, not a policy rejection — surface it
+  // distinctly (still fail-closed) so it is a one-line fix, not a multi-step
+  // investigation. Covers both ENOENT (missing) and EACCES (not +x) uniformly.
+  try {
+    accessSync(cli, constants.X_OK)
+  } catch {
+    throw new PreflightUnavailable(
+      `git-guard: preflight tool '${cli}' is missing or not executable — run ` +
+        `'chmod +x ${PREFLIGHT_REL}' (or 'git update-index --chmod=+x ${PREFLIGHT_REL}' ` +
+        `to fix the committed mode). This is a BROKEN PREREQUISITE, not a policy ` +
+        `rejection; fail-closed.`,
+    )
+  }
   const res = spawnSync(cli, ["config-scan"], {
     cwd: directory,
     encoding: "utf8",
   })
   if (res.error) {
-    // spawn failed (CLI missing / not executable / etc.) — fail-closed.
-    throw new GitGuardAbort(
-      `git-guard: could not run '${cli} config-scan' (${res.error.message}); fail-closed`,
+    // Spawn still failed after the pre-check (race / exotic error) — treat as a
+    // broken prerequisite too, distinct from a policy REFUSE. Fail-closed.
+    throw new PreflightUnavailable(
+      `git-guard: could not run '${cli} config-scan' (${res.error.message}); ` +
+        `broken prerequisite, NOT a policy rejection; fail-closed`,
     )
   }
   // spawnSync sets status to null if the process was killed by a signal.

@@ -18,7 +18,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } from "node:f
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { GitGuard, decideFromExit, runConfigScan } from "../.gleipnir/plugins/git-guard.ts"
+import { GitGuard, decideFromExit, runConfigScan, PreflightUnavailable } from "../.gleipnir/plugins/git-guard.ts"
 
 const COMMIT_TOOL = "gleipnir-git_commit_changes"
 const PUSH_TOOL = "gleipnir-git_push_current_branch"
@@ -42,6 +42,17 @@ function makeRepoWithStub(code) {
 // Make a temp repo WITHOUT the CLI (to test the spawn-failure fail-closed path).
 function makeRepoNoStub() {
   return mkdtempSync(join(tmpdir(), "gleipnir-git-guard-nocli-"))
+}
+
+// A temp repo whose bin/gleipnir-preflight EXISTS but is NOT executable — the
+// exact regression that locked out the broker (committed mode 100644).
+function makeRepoNonExecStub() {
+  const dir = mkdtempSync(join(tmpdir(), "gleipnir-git-guard-noexec-"))
+  mkdirSync(join(dir, "bin"), { recursive: true })
+  const stub = join(dir, "bin", "gleipnir-preflight")
+  writeFileSync(stub, `#!/bin/sh\nexit 0\n`)
+  chmodSync(stub, 0o644) // present but not +x
+  return dir
 }
 
 async function runBefore(dir, tool) {
@@ -123,6 +134,34 @@ test("CLI missing: ABORTS (spawn failure fails closed)", async () => {
   const dir = makeRepoNoStub()
   try {
     await assert.rejects(runBefore(dir, COMMIT_TOOL), /could not run|fail-closed/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("preflight NOT executable: aborts with PreflightUnavailable, not a REFUSE", async () => {
+  const dir = makeRepoNonExecStub()
+  try {
+    await assert.rejects(runBefore(dir, COMMIT_TOOL), (err) => {
+      assert.ok(err instanceof PreflightUnavailable,
+        "must be PreflightUnavailable (broken tool), not a plain REFUSE abort")
+      assert.match(err.message, /not executable|missing/)
+      assert.doesNotMatch(err.message, /REFUSED/) // NOT a policy rejection
+      return true
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("preflight MISSING: also PreflightUnavailable (distinct from REFUSE)", async () => {
+  const dir = makeRepoNoStub()
+  try {
+    await assert.rejects(runBefore(dir, COMMIT_TOOL), (err) => {
+      assert.ok(err instanceof PreflightUnavailable)
+      assert.doesNotMatch(err.message, /REFUSED/)
+      return true
+    })
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
