@@ -262,8 +262,7 @@ push_current_branch functional in production; dogfood node test 16/16 pass in-co
    as Required Section #1, with exact column spec and L-C14 rationale cite. SESSION-STATE.md had
    stale claim that this was "not yet done" — a discrepancy flagged as candidate lesson on verifying
    "next" items against disk before treating them as still open.
-- **Deferred convergence items:**
-   - Stage-role-map precedence question for prose/config-only plans (flagged during escalation-process plan, not yet ratified).
+- **Stage-role-map precedence for prose/config-only plans — RESOLVED (see "Prose/config-only pipeline track — APPLIED + VERIFIED this session" above).** The question was flagged during the escalation-process plan brainstorm; converged and ratified as Approach B, spec-reviewed APPROVED, and applied to stage-role-map.md (lines 63–167).
 - **S-2 activation still deferred** (operator call) — unchanged.
 - **RESTART-GATED changes — NOW CONFIRMED LIVE this session (not still pending):**
    All four Tier-3 edits verified on-disk and active:
