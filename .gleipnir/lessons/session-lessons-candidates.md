@@ -417,6 +417,16 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C26 — The L-C13 empty-return discipline is not reliably holding for gleipnir-code; treat repeated empty returns as a signal to split the delegation and always disk-verify completeness, not just existence
+
+**Observed (this session, 3x on one slice):** across the G-4 terminal-events implementation, `gleipnir-code` returned a COMPLETELY EMPTY final message three separate times — despite the L-C13 fix that added a standing "always end with a written report, never return empty" section to all subagent files (and despite the L-C24 recurrence earlier THIS session with the same agent). Each time the work had partially or fully landed on disk, but once (the ledger half of a two-half plan) the delivery was genuinely INCOMPLETE — steps 1-2 done, steps 3-4 silently skipped — and the empty return hid that. Disk-verification per L-C4/L-C24 caught it: not just "did files change" (existence) but "did ALL the planned changes land" (completeness) — a grep for the specific planned artifacts (the ledger metrics, the corrected seam reasons) revealed the gap.
+
+**Proposed lesson:** (a) The L-C13 baked-in empty-return discipline is necessary but NOT sufficient — it is not reliably holding for gleipnir-code, so the orchestrator-side backstop (L-C4 verify-against-disk) is load-bearing, not belt-and-braces. (b) Verify COMPLETENESS, not just existence: after a multi-part delegation, grep/read for EACH planned artifact (each file, each metric, each corrected string), because a partial delivery with an empty return looks identical to a complete one at the git-status level. (c) When an agent returns empty repeatedly on one task, treat it as a signal to SPLIT the delegation into smaller single-artifact units (as was done here — re-delegating the ledger half alone succeeded and was verifiable) rather than re-issuing the same large multi-step task. (d) Candidate for a structural fix: a post-delegation completeness-check the orchestrator runs mechanically against the plan's declared touched-file/artifact set.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
