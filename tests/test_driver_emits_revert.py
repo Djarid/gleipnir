@@ -185,6 +185,13 @@ def test_budget_exhausting_hop_emits_escalated_event_without_raising(
 def test_needs_human_hop_does_not_raise_and_emits_no_revert_event(
     tmp_path, bridge_path, key_file
 ):
+    """Updated by `.gleipnir/plans/g4-terminal-events.md`: this hop is no
+    longer emit-nothing -- it now emits exactly one `NeedsHumanRaisedEvent`
+    (see `tests/test_driver_emits_needs_human_and_gate.py` for the full
+    coverage of that new fact). What THIS test still asserts, unchanged, is
+    the original intent: no *revert* event is emitted for a NEEDS_HUMAN
+    hop (it is not a revert)."""
+
     logs_dir = tmp_path / "logs"
     bus = EventBus("session-needs-human", logs_dir=logs_dir)
     driver = Driver(PIPELINE_ID, bridge_path, key_file=key_file, bus=bus)
@@ -196,7 +203,7 @@ def test_needs_human_hop_does_not_raise_and_emits_no_revert_event(
     assert result.escalated is False
 
     events = _read_events(logs_dir, "session-needs-human")
-    assert events == []
+    assert all(e.kind is not EventKind.REVERT_OCCURRED for e in events)
 
 
 # ---------------------------------------------------------------------------

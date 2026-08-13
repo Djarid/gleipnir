@@ -59,8 +59,20 @@ never called on them. The driver classifies by `StepResult.escalated` first
 (the budget-exhausting hop → emit with `to_state = ESCALATED.value` as an
 explicit constant, `escalated=True` — this IS the Nth revert and the most
 important to log), then a normal-revert branch guarded by `in PIPELINE_ORDER`
-membership before any index compare, else emit nothing (NEEDS_HUMAN / forward
+membership before any index compare, else emit nothing (forward
 PASS) without raising.
+
+**Update (g4-terminal-events slice):** the NEEDS_HUMAN case is no longer a
+no-op. A later slice (`../plans/g4-terminal-events.md`) added the
+`NEEDS_HUMAN_RAISED` and `GATE_REACHED` event kinds; the driver now emits a
+`NeedsHumanRaisedEvent` on the human-question hop via a SEPARATE sibling method
+(`_emit_needs_human_if_any`), and a `GateReachedEvent` via an `attempt_gate`
+wrapper — both kept out of `_emit_revert_if_any` so its crash-safe revert
+classifier (above) is untouched. So within `_emit_revert_if_any`'s branch (C),
+only forward-PASS remains a true no-op; NEEDS_HUMAN is now emitted by the
+sibling method. `revert_count`/`escalation_count` are unchanged; the ledger's
+`iterations`/`retries` seams stay Gaps (the engine has no iteration/retry
+concept to source them — see that plan's D6).
 
 ## Degrade-not-raise (Tier-1 discipline)
 

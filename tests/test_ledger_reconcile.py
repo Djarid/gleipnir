@@ -20,7 +20,12 @@ from pathlib import Path
 import pytest
 
 from gleipnir.bus.emit import EventBus
-from gleipnir.bus.events import EventKind, RevertOccurredEvent
+from gleipnir.bus.events import (
+    EventKind,
+    GateReachedEvent,
+    NeedsHumanRaisedEvent,
+    RevertOccurredEvent,
+)
 from gleipnir.ledger.metric import Gap, LedgerError, Measured
 from gleipnir.ledger.reconcile import ReconciliationReport, reconcile
 from gleipnir.ledger.reduce import SEAM_NAMES, reduce
@@ -46,6 +51,30 @@ def _emit_revert(bus, *, escalated=False):
     assert result.ok is True
 
 
+def _emit_needs_human(bus, *, from_state="test"):
+    payload = NeedsHumanRaisedEvent(from_state=from_state)
+    result = bus.emit(
+        EventKind.NEEDS_HUMAN_RAISED,
+        payload,
+        emitter="engine.driver",
+        enforcement_surface="engine",
+        action="needs_human_raised",
+    )
+    assert result.ok is True
+
+
+def _emit_gate_reached(bus, *, pipeline_id="pl-1"):
+    payload = GateReachedEvent(pipeline_id=pipeline_id)
+    result = bus.emit(
+        EventKind.GATE_REACHED,
+        payload,
+        emitter="engine.driver",
+        enforcement_surface="engine",
+        action="gate_reached",
+    )
+    assert result.ok is True
+
+
 class TestReconciliationAgreesWithReduce:
     def test_reconcile_matches_reduced_report(self, tmp_path):
         bus = _bus(tmp_path)
@@ -67,6 +96,8 @@ class TestReconciliationAgreesWithReduce:
         result = reconcile(log, report)
         assert result.revert_count == 0
         assert result.escalation_count == 0
+        assert result.human_question_count == 0
+        assert result.gate_reached_count == 0
 
     def test_reconcile_matches_with_malformed_lines_present(self, tmp_path):
         bus = _bus(tmp_path)
@@ -81,6 +112,23 @@ class TestReconciliationAgreesWithReduce:
         assert result.revert_count == 2
         assert result.escalation_count == 1
         assert result.unreadable_line_count == 1
+
+    def test_reconcile_matches_needs_human_and_gate_reached_counts(self, tmp_path):
+        """G-4 terminal-events slice (D7, `g4-terminal-events.md`): reconcile
+        independently re-derives human_question_count/gate_reached_count and
+        agrees with reduce()'s report."""
+
+        bus = _bus(tmp_path)
+        _emit_needs_human(bus, from_state="test")
+        _emit_needs_human(bus, from_state="quality")
+        _emit_gate_reached(bus, pipeline_id="pl-1")
+        _emit_revert(bus, escalated=True)
+
+        report = reduce(bus.path)
+        result = reconcile(bus.path, report)
+
+        assert result.human_question_count == report.human_question_count.value == 2
+        assert result.gate_reached_count == report.gate_reached_count.value == 1
 
 
 class TestReconciliationDivergenceRaises:
@@ -128,6 +176,46 @@ class TestReconciliationDivergenceRaises:
             report,
             escalation_rate=Measured(
                 name="escalation_rate", value=0.0, denominator=1, provenance="tampered"
+            ),
+        )
+
+        with pytest.raises(LedgerError):
+            reconcile(bus.path, tampered)
+
+    def test_divergent_human_question_count_raises_ledger_error(self, tmp_path):
+        """D7: a reduce()-metric with no matching reconcile() re-derivation
+        would silently break the two-call-site consistency invariant; this
+        proves reconcile() actually re-derives and checks it."""
+
+        bus = _bus(tmp_path)
+        _emit_needs_human(bus)
+        report = reduce(bus.path)
+
+        tampered = dataclasses.replace(
+            report,
+            human_question_count=Measured(
+                name="human_question_count",
+                value=99,
+                denominator=1,
+                provenance="tampered",
+            ),
+        )
+
+        with pytest.raises(LedgerError):
+            reconcile(bus.path, tampered)
+
+    def test_divergent_gate_reached_count_raises_ledger_error(self, tmp_path):
+        bus = _bus(tmp_path)
+        _emit_gate_reached(bus)
+        report = reduce(bus.path)
+
+        tampered = dataclasses.replace(
+            report,
+            gate_reached_count=Measured(
+                name="gate_reached_count",
+                value=99,
+                denominator=1,
+                provenance="tampered",
             ),
         )
 

@@ -45,18 +45,28 @@ class ReconciliationReport:
     """The self-consistency re-derivation's result: the independently
     re-counted revert baseline (equal to the `LedgerReport`'s, by
     construction -- `reconcile` raises before returning on divergence), plus
-    the canonical gap enumeration for every not-yet-emitted metric."""
+    the canonical gap enumeration for every not-yet-emitted metric.
+
+    ``human_question_count`` / ``gate_reached_count``
+    (`.gleipnir/plans/g4-terminal-events.md` D7) are the independently
+    re-derived counterparts of `reduce.py`'s `LedgerReport` fields of the
+    same name -- re-counted here via the SAME typed read path but a
+    genuinely separate code path, so a divergence between the two call
+    sites is caught rather than silently trusted.
+    """
 
     session_id: str | None
     revert_count: int
     escalation_count: int
+    human_question_count: int
+    gate_reached_count: int
     unreadable_line_count: int
     gaps: tuple[Gap, ...]
 
 
 def _recount_from_raw_jsonl(
     session_log_path: str | Path,
-) -> tuple[int, int, int, str | None]:
+) -> tuple[int, int, int, int, int, str | None]:
     """A SEPARATE re-implementation of the revert-count reduction over the
     raw JSONL, reading ONLY via `Event.from_json_line` (typed attribute
     access) -- deliberately not a call into `reduce.reduce`, so this is a
@@ -65,6 +75,8 @@ def _recount_from_raw_jsonl(
     path = Path(session_log_path)
     revert_total = 0
     escalated_total = 0
+    human_question_total = 0
+    gate_reached_total = 0
     unreadable = 0
     session_id: str | None = None
 
@@ -86,8 +98,19 @@ def _recount_from_raw_jsonl(
                 revert_total += 1
                 if event.payload.escalated:
                     escalated_total += 1
+            elif event.kind is EventKind.NEEDS_HUMAN_RAISED:
+                human_question_total += 1
+            elif event.kind is EventKind.GATE_REACHED:
+                gate_reached_total += 1
 
-    return revert_total, escalated_total, unreadable, session_id
+    return (
+        revert_total,
+        escalated_total,
+        human_question_total,
+        gate_reached_total,
+        unreadable,
+        session_id,
+    )
 
 
 def reconcile(session_log_path: str | Path, report: LedgerReport) -> ReconciliationReport:
@@ -99,9 +122,14 @@ def reconcile(session_log_path: str | Path, report: LedgerReport) -> Reconciliat
     (with the canonical seam-gap enumeration) when consistent.
     """
 
-    revert_total, escalated_total, unreadable, session_id = _recount_from_raw_jsonl(
-        session_log_path
-    )
+    (
+        revert_total,
+        escalated_total,
+        human_question_total,
+        gate_reached_total,
+        unreadable,
+        session_id,
+    ) = _recount_from_raw_jsonl(session_log_path)
 
     if revert_total != report.revert_count.value:
         raise LedgerError(
@@ -125,10 +153,28 @@ def reconcile(session_log_path: str | Path, report: LedgerReport) -> Reconciliat
             f"re-derived={expected_rate!r} report={report.escalation_rate.value!r}"
         )
 
+    # D7 (`.gleipnir/plans/g4-terminal-events.md`): the two new Measured
+    # counts must be re-derived here too, or the two-call-site consistency
+    # invariant is silently broken for them.
+    if human_question_total != report.human_question_count.value:
+        raise LedgerError(
+            "reconciliation divergence on human_question_count: "
+            f"re-derived={human_question_total!r} "
+            f"report={report.human_question_count.value!r}"
+        )
+    if gate_reached_total != report.gate_reached_count.value:
+        raise LedgerError(
+            "reconciliation divergence on gate_reached_count: "
+            f"re-derived={gate_reached_total!r} "
+            f"report={report.gate_reached_count.value!r}"
+        )
+
     return ReconciliationReport(
         session_id=session_id,
         revert_count=revert_total,
         escalation_count=escalated_total,
+        human_question_count=human_question_total,
+        gate_reached_count=gate_reached_total,
         unreadable_line_count=unreadable,
         gaps=build_seam_gaps(),
     )

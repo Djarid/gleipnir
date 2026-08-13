@@ -40,6 +40,18 @@ pure (no bus import, no filesystem/process boundary there); the driver,
 which already performs I/O (bridge writes, key loads), is the emit site.
 Emission is telemetry — it degrades rather than raising (`bus/emit.py`) and
 never alters this module's fail-closed key/bridge ordering.
+
+**G-4 terminal/interoceptive events (`.gleipnir/plans/g4-terminal-events.md`).**
+Two further honest, driver-observed facts, each its own SIBLING emit method
+(kept separate from the crash-safe revert classifier so its guards are
+never touched by an unrelated change, per that plan's spec-review Note 2):
+``advance`` also emits a ``NeedsHumanRaisedEvent`` when the step raised the
+human gate (``NEEDS_HUMAN`` -> ``HUMAN_QUESTION``, precept 10); and the new
+``attempt_gate`` wrapper (there was no driver-side wrapper for
+``Engine.attempt_gate`` before this) emits a ``GateReachedEvent`` on a
+successful G-3.2 GIT -> GATE transition. Both follow the same
+write-bridge-before-emit ordering and degrade-not-raise posture as the
+revert path; the engine remains untouched (no bus import) by either.
 """
 
 from __future__ import annotations
@@ -48,8 +60,15 @@ import os
 from pathlib import Path
 from typing import Any, Mapping
 
-from gleipnir.bus import EventBus, EventKind, RevertOccurredEvent
+from gleipnir.bus import (
+    EventBus,
+    EventKind,
+    GateReachedEvent,
+    NeedsHumanRaisedEvent,
+    RevertOccurredEvent,
+)
 from gleipnir.engine import (
+    Attestation,
     Engine,
     Judge,
     PIPELINE_ORDER,
@@ -226,6 +245,9 @@ class Driver:
         self._emit_revert_if_any(
             from_state, result, agent=agent, originating_turn=originating_turn
         )
+        self._emit_needs_human_if_any(
+            from_state, result, agent=agent, originating_turn=originating_turn
+        )
         return result
 
     def advance_on_clean_completion(
@@ -236,6 +258,38 @@ class Driver:
         that predate the generalized ``advance``."""
 
         return self.advance(_trivial_completion_judge, minted_at=minted_at)
+
+    def attempt_gate(
+        self,
+        attestation: "Attestation",
+        *,
+        minted_at: int | None = None,
+        agent: str | None = None,
+        originating_turn: int = 0,
+    ) -> StepResult:
+        """Attempt the G-3.2 GIT -> GATE transition, republish the bridge,
+        and (if a bus is injected) emit a G-4 ``GateReachedEvent`` on
+        success.
+
+        The key is loaded *first*, fail-closed, mirroring ``advance``. If
+        ``Engine.attempt_gate`` refuses (``AttestationRequired``,
+        ``AttestationNotGreen``, a ``TypeError``, or calling from a
+        non-``GIT`` state), the exception propagates unchanged: the bridge
+        is NOT rewritten and nothing is emitted, because the engine's state
+        did not change (no terminal was actually reached). Emission is
+        telemetry: it degrades (never raises) and never blocks the gate
+        attempt itself.
+        """
+
+        self._load_key()
+
+        result = self.engine.attempt_gate(attestation)
+        self.write_bridge(minted_at=minted_at)
+
+        self._emit_gate_reached_if_any(
+            result, agent=agent, originating_turn=originating_turn
+        )
+        return result
 
     def _emit_revert_if_any(
         self,
@@ -287,6 +341,78 @@ class Driver:
             emitter="gleipnir-engine-driver",
             enforcement_surface="g5-engine",
             action="revert",
+            agent=agent,
+            originating_turn=originating_turn,
+            artifact_ref=self.engine.pipeline_id,
+        )
+
+    def _emit_needs_human_if_any(
+        self,
+        from_state: PipelineState,
+        result: StepResult,
+        *,
+        agent: str | None,
+        originating_turn: int,
+    ) -> None:
+        """Emit ``NeedsHumanRaisedEvent`` when this step raised the human
+        gate (``Verdict.NEEDS_HUMAN`` routing to
+        ``PipelineState.HUMAN_QUESTION``). A SIBLING to
+        ``_emit_revert_if_any`` (`g4-terminal-events.md` spec-review Note
+        2) — kept separate so the crash-safe revert classifier's guards are
+        never touched by this unrelated fact. No-op when no bus is
+        injected. Never raises (emit degrades on its own)."""
+
+        if self._bus is None:
+            return
+
+        if result.state is not PipelineState.HUMAN_QUESTION:
+            return
+
+        payload = NeedsHumanRaisedEvent(from_state=from_state.value)
+
+        self._bus.emit(
+            EventKind.NEEDS_HUMAN_RAISED,
+            payload,
+            emitter="gleipnir-engine-driver",
+            enforcement_surface="g5-engine",
+            action="needs_human_raised",
+            agent=agent,
+            originating_turn=originating_turn,
+            artifact_ref=self.engine.pipeline_id,
+        )
+
+    def _emit_gate_reached_if_any(
+        self,
+        result: StepResult,
+        *,
+        agent: str | None,
+        originating_turn: int,
+    ) -> None:
+        """Emit ``GateReachedEvent`` on the G-3.2 clean-completion terminal
+        (a successful ``Engine.attempt_gate``). No-op when no bus is
+        injected. Never raises (emit degrades on its own).
+
+        Guarded on ``result.state is PipelineState.GATE`` even though
+        ``Engine.attempt_gate`` only ever returns that state on success
+        (otherwise it raises, and ``attempt_gate`` above never reaches this
+        call) -- documents the edge-case contract explicitly rather than
+        relying on the caller's control flow alone.
+        """
+
+        if self._bus is None:
+            return
+
+        if result.state is not PipelineState.GATE:
+            return
+
+        payload = GateReachedEvent(pipeline_id=self.engine.pipeline_id)
+
+        self._bus.emit(
+            EventKind.GATE_REACHED,
+            payload,
+            emitter="gleipnir-engine-driver",
+            enforcement_surface="g5-engine",
+            action="gate_reached",
             agent=agent,
             originating_turn=originating_turn,
             artifact_ref=self.engine.pipeline_id,

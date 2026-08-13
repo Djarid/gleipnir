@@ -15,6 +15,8 @@ from gleipnir.bus.events import (
     Envelope,
     Event,
     EventKind,
+    GateReachedEvent,
+    NeedsHumanRaisedEvent,
     RevertOccurredEvent,
 )
 
@@ -25,6 +27,8 @@ __all__ = [
     "Event",
     "EventKind",
     "RevertOccurredEvent",
+    "NeedsHumanRaisedEvent",
+    "GateReachedEvent",
     "EmitResult",
     "EventBus",
 ]

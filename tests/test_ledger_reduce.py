@@ -25,7 +25,12 @@ from pathlib import Path
 import pytest
 
 from gleipnir.bus.emit import EventBus
-from gleipnir.bus.events import EventKind, RevertOccurredEvent
+from gleipnir.bus.events import (
+    EventKind,
+    GateReachedEvent,
+    NeedsHumanRaisedEvent,
+    RevertOccurredEvent,
+)
 from gleipnir.ledger.metric import Gap, Measured
 from gleipnir.ledger.reduce import SEAM_NAMES, LedgerReport, build_seam_gaps, reduce
 
@@ -51,6 +56,36 @@ def _emit_revert(bus: EventBus, *, escalated: bool = False) -> None:
         agent="gleipnir-code",
         originating_turn=1,
         artifact_ref="pl-test-1",
+    )
+    assert result.ok is True
+
+
+def _emit_needs_human(bus: EventBus, *, from_state: str = "test") -> None:
+    payload = NeedsHumanRaisedEvent(from_state=from_state)
+    result = bus.emit(
+        EventKind.NEEDS_HUMAN_RAISED,
+        payload,
+        emitter="engine.driver",
+        enforcement_surface="engine",
+        action="needs_human_raised",
+        agent="gleipnir-code",
+        originating_turn=1,
+        artifact_ref="pl-test-1",
+    )
+    assert result.ok is True
+
+
+def _emit_gate_reached(bus: EventBus, *, pipeline_id: str = "pl-test-1") -> None:
+    payload = GateReachedEvent(pipeline_id=pipeline_id)
+    result = bus.emit(
+        EventKind.GATE_REACHED,
+        payload,
+        emitter="engine.driver",
+        enforcement_surface="engine",
+        action="gate_reached",
+        agent="gleipnir-code",
+        originating_turn=1,
+        artifact_ref=pipeline_id,
     )
     assert result.ok is True
 
@@ -134,6 +169,25 @@ class TestEmptyLog:
         assert report.revert_count.value == 0
         assert report.escalation_count.value == 0
 
+    def test_empty_file_yields_genuine_measured_zero_for_new_counts(
+        self, tmp_path: Path
+    ):
+        """`human_question_count`/`gate_reached_count` on an empty log are
+        genuine Measured(0, 1) -- a measured zero, NOT a Gap (D5 edge case,
+        `g4-terminal-events.md`)."""
+
+        log = tmp_path / "session-empty.jsonl"
+        log.write_text("")
+
+        report = reduce(log)
+
+        assert isinstance(report.human_question_count, Measured)
+        assert report.human_question_count.value == 0
+        assert report.human_question_count.denominator == 1
+        assert isinstance(report.gate_reached_count, Measured)
+        assert report.gate_reached_count.value == 0
+        assert report.gate_reached_count.denominator == 1
+
     def test_empty_file_yields_all_seam_gaps(self, tmp_path: Path):
         log = tmp_path / "session-empty.jsonl"
         log.write_text("")
@@ -212,6 +266,122 @@ class TestMalformedLine:
         assert report.unreadable_line_count == 1
         assert report.revert_count.value == 2
         assert report.escalation_count.value == 1
+
+
+# ---------------------------------------------------------------------------
+# G-4 terminal-events slice (`g4-terminal-events.md` D5/Assemble step 3):
+# human_question_count / gate_reached_count.
+# ---------------------------------------------------------------------------
+
+
+class TestNeedsHumanAndGateReachedCounts:
+    def test_counts_needs_human_and_gate_reached_kinds(self, tmp_path: Path):
+        bus = _bus(tmp_path)
+        _emit_needs_human(bus, from_state="test")
+        _emit_needs_human(bus, from_state="quality")
+        _emit_gate_reached(bus, pipeline_id="pl-1")
+
+        report = reduce(bus.path)
+
+        assert isinstance(report.human_question_count, Measured)
+        assert report.human_question_count.value == 2
+        assert report.human_question_count.denominator == 1
+        assert isinstance(report.gate_reached_count, Measured)
+        assert report.gate_reached_count.value == 1
+        assert report.gate_reached_count.denominator == 1
+
+    def test_counts_are_independent_of_revert_counting(self, tmp_path: Path):
+        """A mixed stream of reverts, needs-human, and gate-reached events
+        each count into their own metric -- none bleeds into another."""
+
+        bus = _bus(tmp_path)
+        _emit_revert(bus, escalated=True)
+        _emit_needs_human(bus)
+        _emit_gate_reached(bus)
+        _emit_revert(bus, escalated=False)
+
+        report = reduce(bus.path)
+
+        assert report.revert_count.value == 2
+        assert report.escalation_count.value == 1
+        assert report.human_question_count.value == 1
+        assert report.gate_reached_count.value == 1
+
+    def test_counted_by_typed_attribute_not_string_match(self, tmp_path: Path):
+        """A `from_state`/`pipeline_id` value that would defeat a naive
+        string-match (e.g. containing the literal word "revert_occurred")
+        must still be counted correctly by typed `event.kind is EventKind.X`
+        dispatch, never a substring/string match on the payload."""
+
+        bus = _bus(tmp_path)
+        _emit_needs_human(bus, from_state="revert_occurred and gate_reached")
+        _emit_gate_reached(bus, pipeline_id="needs_human_raised-lookalike")
+
+        report = reduce(bus.path)
+
+        assert report.human_question_count.value == 1
+        assert report.gate_reached_count.value == 1
+        assert report.revert_count.value == 0
+
+    def test_missing_file_yields_measured_zero_not_gap_for_new_counts(
+        self, tmp_path: Path
+    ):
+        missing = tmp_path / "does-not-exist.jsonl"
+        report = reduce(missing)
+
+        assert isinstance(report.human_question_count, Measured)
+        assert report.human_question_count.value == 0
+        assert isinstance(report.gate_reached_count, Measured)
+        assert report.gate_reached_count.value == 0
+
+
+# ---------------------------------------------------------------------------
+# Stress-test D6: iterations/retries stay Gaps, reasons rewritten truthfully.
+# ---------------------------------------------------------------------------
+
+
+class TestIterationsAndRetriesReasonsRewritten:
+    def test_iterations_and_retries_still_gaps(self, tmp_path: Path):
+        bus = _bus(tmp_path)
+        _emit_revert(bus)
+        report = reduce(bus.path)
+
+        gap_by_name = {g.name: g for g in report.gaps}
+        assert "iterations" in gap_by_name
+        assert "retries" in gap_by_name
+        assert isinstance(gap_by_name["iterations"], Gap)
+        assert isinstance(gap_by_name["retries"], Gap)
+
+    def test_reasons_no_longer_claim_a_missing_eventkind(self, tmp_path: Path):
+        """D6: the old reasons ("no IterationEvent kind on the bus yet" /
+        "no RetryEvent kind on the bus yet") were misleading -- they implied
+        a fact merely un-wired. The true blocker is that the engine's model
+        has no distinct iteration/retry fact at all (a FAIL routes backward
+        as an already-counted revert; the only cap is the global revert
+        budget, i.e. the already-counted escalated revert)."""
+
+        bus = _bus(tmp_path)
+        report = reduce(bus.path)
+        gap_by_name = {g.name: g for g in report.gaps}
+
+        iterations_reason = gap_by_name["iterations"].reason
+        retries_reason = gap_by_name["retries"].reason
+
+        assert "IterationEvent" not in iterations_reason
+        assert "RetryEvent" not in retries_reason
+        assert "revert" in iterations_reason.lower()
+        assert "revert" in retries_reason.lower()
+        assert "escalat" in iterations_reason.lower()
+
+    def test_no_redundant_escalation_kind_gap_added(self, tmp_path: Path):
+        """Escalation is already captured by RevertOccurredEvent.escalated
+        (escalation_count) -- this slice must NOT add a separate
+        'escalation' seam/gap on top of that (D8, no redundant metric)."""
+
+        bus = _bus(tmp_path)
+        report = reduce(bus.path)
+        gap_names = {g.name for g in report.gaps}
+        assert "escalation" not in gap_names
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +559,13 @@ class TestLedgerReportShape:
     def test_to_json_round_trips_through_json_loads(self, tmp_path: Path):
         bus = _bus(tmp_path)
         _emit_revert(bus, escalated=True)
+        _emit_needs_human(bus)
+        _emit_gate_reached(bus)
         report = reduce(bus.path)
         parsed = json.loads(report.to_json())
         assert parsed["revert_count"]["value"] == 1
         assert parsed["escalation_count"]["value"] == 1
+        assert parsed["human_question_count"]["value"] == 1
+        assert parsed["human_question_count"]["kind"] == "measured"
+        assert parsed["gate_reached_count"]["value"] == 1
+        assert parsed["gate_reached_count"]["kind"] == "measured"

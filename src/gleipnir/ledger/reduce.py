@@ -47,9 +47,34 @@ __all__ = ["LedgerReport", "reduce", "SEAM_NAMES", "build_seam_gaps"]
 # it is a Gap unconditionally this slice, regardless of rate-table digest
 # status -- see `ratetable.py` for the (separately tested, not-yet-wired)
 # digest machinery that will eventually back this decision.
+#
+# "iterations"/"retries" (D6, `.gleipnir/plans/g4-terminal-events.md`): these
+# reasons were rewritten by that plan. The engine has NO iteration counter
+# and NO same-stage retry/self-loop concept -- `Verdict.FAIL` always routes
+# BACKWARD to an earlier stage (a revert, already counted via
+# `revert_occurred`/`revert_count`), never a same-stage self-loop; the
+# retired per-state `loop_count`/`LOOPING_STATES` model is superseded. The
+# engine's only cap is the global revert budget, and reaching it IS the
+# escalated revert (already counted via `escalation_count`). So there is no
+# distinct iteration-cap or retry FACT for the driver to observe and emit --
+# not "no EventKind yet" (that phrasing implied a fact merely un-wired; the
+# fact itself does not exist in the engine's model). These stay Gaps
+# (deferred, not fabricated) rather than flipping to a redundant metric that
+# would double-count what `revert_count`/`escalation_count` already carry.
 _SEAM_REASONS: dict[str, str] = {
-    "iterations": "no IterationEvent kind on the bus yet",
-    "retries": "no RetryEvent kind on the bus yet",
+    "iterations": (
+        "no iteration-cap fact exists to source this from -- the engine has "
+        "no iteration counter (the retired per-state loop_count/"
+        "LOOPING_STATES model was superseded); its only cap is the global "
+        "revert budget, and reaching it IS the escalated revert already "
+        "counted via escalation_count"
+    ),
+    "retries": (
+        "no distinct retry fact exists to source this from -- Verdict.FAIL "
+        "always routes backward to an earlier stage (a revert, already "
+        "counted via revert_count), never a same-stage self-loop; the "
+        "engine has no retry-in-place concept for the driver to observe"
+    ),
     "token_usage": "no TokenUsageEvent kind on the bus yet",
     "cost": (
         "cost deferred until the S-2 mount makes the rate table structurally "
@@ -87,12 +112,21 @@ class LedgerReport:
     ``revert_count`` and follows the zero-denominator convention (edge case
     6): when ``revert_count == 0`` the rate is a vacuous ``Measured`` with
     ``value=None`` and ``denominator=0`` — never a fabricated ``0.0``.
+
+    ``human_question_count`` / ``gate_reached_count``
+    (`.gleipnir/plans/g4-terminal-events.md` D5) are two further raw counts
+    (``denominator=1``, same convention as ``revert_count``), sourced from
+    the ``NEEDS_HUMAN_RAISED`` / ``GATE_REACHED`` event kinds. An empty/
+    missing log yields a genuine ``Measured(0, 1)`` for both — a measured
+    zero, never a ``Gap``.
     """
 
     session_id: str | None
     revert_count: Measured
     escalation_count: Measured
     escalation_rate: Measured
+    human_question_count: Measured
+    gate_reached_count: Measured
     gaps: tuple[Gap, ...]
     unreadable_line_count: int
 
@@ -102,6 +136,8 @@ class LedgerReport:
             "revert_count": self.revert_count.to_dict(),
             "escalation_count": self.escalation_count.to_dict(),
             "escalation_rate": self.escalation_rate.to_dict(),
+            "human_question_count": self.human_question_count.to_dict(),
+            "gate_reached_count": self.gate_reached_count.to_dict(),
             "gaps": [g.to_dict() for g in self.gaps],
             "unreadable_line_count": self.unreadable_line_count,
         }
@@ -133,6 +169,8 @@ def reduce(session_log_path: str | Path) -> LedgerReport:
     path = Path(session_log_path)
     revert_total = 0
     escalated_total = 0
+    human_question_total = 0
+    gate_reached_total = 0
     unreadable = 0
     session_id: str | None = None
 
@@ -157,6 +195,12 @@ def reduce(session_log_path: str | Path) -> LedgerReport:
                 # Typed attribute access -- never a string match on to_state.
                 if event.payload.escalated:
                     escalated_total += 1
+            elif event.kind is EventKind.NEEDS_HUMAN_RAISED:
+                # Typed kind check -- never a string match on payload.from_state.
+                human_question_total += 1
+            elif event.kind is EventKind.GATE_REACHED:
+                # Typed kind check -- never a string match on payload.pipeline_id.
+                gate_reached_total += 1
 
     revert_count = Measured(
         name="revert_count",
@@ -191,11 +235,29 @@ def reduce(session_log_path: str | Path) -> LedgerReport:
             provenance="bus:revert_occurred escalated_count/revert_count",
         )
 
+    # Two honest raw counts (D5): denominator=1, mirroring revert_count's
+    # construction. An empty/missing log yields a genuine Measured(0, 1) for
+    # both -- a measured zero, never a Gap (edge case, `g4-terminal-events.md`).
+    human_question_count = Measured(
+        name="human_question_count",
+        value=human_question_total,
+        denominator=1,
+        provenance="bus:needs_human_raised count",
+    )
+    gate_reached_count = Measured(
+        name="gate_reached_count",
+        value=gate_reached_total,
+        denominator=1,
+        provenance="bus:gate_reached count",
+    )
+
     return LedgerReport(
         session_id=session_id,
         revert_count=revert_count,
         escalation_count=escalation_count,
         escalation_rate=escalation_rate,
+        human_question_count=human_question_count,
+        gate_reached_count=gate_reached_count,
         gaps=build_seam_gaps(),
         unreadable_line_count=unreadable,
     )

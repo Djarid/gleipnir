@@ -36,6 +36,8 @@ __all__ = [
     "EventKind",
     "Envelope",
     "RevertOccurredEvent",
+    "NeedsHumanRaisedEvent",
+    "GateReachedEvent",
     "Event",
 ]
 
@@ -57,8 +59,13 @@ class BusError(Exception):
 
 class EventKind(str, Enum):
     REVERT_OCCURRED = "revert_occurred"  # G-4b named interoceptive fact
-    # Future kinds (NOT this slice): GUARD_TRIGGERED, HUMAN_ESCALATION,
-    # TASK_ABANDONED, ...
+    # G-4/precept-10 interoceptive fact: a stage's judge asked for a human
+    # (`.gleipnir/plans/g4-terminal-events.md` D1/D2).
+    NEEDS_HUMAN_RAISED = "needs_human_raised"
+    # G-3.2 terminal fact: the GIT -> GATE clean-completion transition
+    # (`Engine.attempt_gate` succeeding) (`g4-terminal-events.md` D1/D3).
+    GATE_REACHED = "gate_reached"
+    # Future kinds (NOT this slice): GUARD_TRIGGERED, TASK_ABANDONED, ...
 
 
 # ---------------------------------------------------------------------------
@@ -110,10 +117,39 @@ class RevertOccurredEvent:
     escalated: bool = False
 
 
+@dataclass(frozen=True)
+class NeedsHumanRaisedEvent:
+    """Payload for ``EventKind.NEEDS_HUMAN_RAISED``.
+
+    ``from_state`` names the main-line stage whose judge returned
+    ``Verdict.NEEDS_HUMAN`` (precept 10's interoceptive "work asked for a
+    human" fact). The engine's transition table always routes this hop to
+    ``PipelineState.HUMAN_QUESTION`` — that target is an invariant, not a
+    variable fact, so no ``to_state`` field is carried (mirrors D2's
+    rationale in `.gleipnir/plans/g4-terminal-events.md`).
+    """
+
+    from_state: str
+
+
+@dataclass(frozen=True)
+class GateReachedEvent:
+    """Payload for ``EventKind.GATE_REACHED``.
+
+    ``pipeline_id`` names which pipeline reached the G-3.2 clean-completion
+    terminal (a successful ``Engine.attempt_gate``), read from
+    ``Engine.pipeline_id`` by attribute — never string-matched.
+    """
+
+    pipeline_id: str
+
+
 # kind -> payload dataclass, for typed dispatch on read. Adding a new
 # EventKind means adding one entry here, not a branch of string parsing.
 _PAYLOAD_CLASSES: dict[EventKind, type] = {
     EventKind.REVERT_OCCURRED: RevertOccurredEvent,
+    EventKind.NEEDS_HUMAN_RAISED: NeedsHumanRaisedEvent,
+    EventKind.GATE_REACHED: GateReachedEvent,
 }
 
 

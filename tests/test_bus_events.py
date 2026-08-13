@@ -34,6 +34,8 @@ from gleipnir.bus.events import (
     Envelope,
     Event,
     EventKind,
+    GateReachedEvent,
+    NeedsHumanRaisedEvent,
     RevertOccurredEvent,
 )
 
@@ -119,6 +121,14 @@ class TestEventKind:
     def test_event_kind_is_str_enum(self):
         assert isinstance(EventKind.REVERT_OCCURRED, str)
 
+    def test_needs_human_raised_member_exists_and_is_str(self):
+        assert EventKind.NEEDS_HUMAN_RAISED.value == "needs_human_raised"
+        assert isinstance(EventKind.NEEDS_HUMAN_RAISED, str)
+
+    def test_gate_reached_member_exists_and_is_str(self):
+        assert EventKind.GATE_REACHED.value == "gate_reached"
+        assert isinstance(EventKind.GATE_REACHED, str)
+
 
 # ---------------------------------------------------------------------------
 # 3. RevertOccurredEvent payload.
@@ -152,6 +162,43 @@ class TestRevertOccurredEventPayload:
         payload = RevertOccurredEvent(
             from_state="test", to_state="spec_review", revert_count=1
         )
+        assert not isinstance(payload, dict)
+        assert dataclasses.is_dataclass(payload)
+
+
+# ---------------------------------------------------------------------------
+# 3b. NeedsHumanRaisedEvent / GateReachedEvent payloads.
+# ---------------------------------------------------------------------------
+
+
+class TestNeedsHumanRaisedEventPayload:
+    def test_carries_from_state(self):
+        payload = NeedsHumanRaisedEvent(from_state="plan")
+        assert payload.from_state == "plan"
+
+    def test_payload_is_frozen(self):
+        payload = NeedsHumanRaisedEvent(from_state="plan")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            payload.from_state = "tampered"  # type: ignore[misc]
+
+    def test_payload_is_not_a_free_dict(self):
+        payload = NeedsHumanRaisedEvent(from_state="plan")
+        assert not isinstance(payload, dict)
+        assert dataclasses.is_dataclass(payload)
+
+
+class TestGateReachedEventPayload:
+    def test_carries_pipeline_id(self):
+        payload = GateReachedEvent(pipeline_id="pl-1")
+        assert payload.pipeline_id == "pl-1"
+
+    def test_payload_is_frozen(self):
+        payload = GateReachedEvent(pipeline_id="pl-1")
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            payload.pipeline_id = "tampered"  # type: ignore[misc]
+
+    def test_payload_is_not_a_free_dict(self):
+        payload = GateReachedEvent(pipeline_id="pl-1")
         assert not isinstance(payload, dict)
         assert dataclasses.is_dataclass(payload)
 
@@ -201,6 +248,32 @@ class TestSerializationRoundTrip:
         reconstructed = Event.from_json_line(event.to_json_line())
         assert reconstructed.envelope.agent is None
         assert reconstructed.envelope.artifact_ref is None
+
+    def test_round_trip_reconstructs_needs_human_raised_event(self):
+        payload = NeedsHumanRaisedEvent(from_state="quality")
+        envelope = _make_envelope(
+            kind=EventKind.NEEDS_HUMAN_RAISED, action="needs_human_raised"
+        )
+        event = Event(envelope=envelope, payload=payload)
+
+        reconstructed = Event.from_json_line(event.to_json_line())
+
+        assert reconstructed.kind is EventKind.NEEDS_HUMAN_RAISED
+        assert isinstance(reconstructed.payload, NeedsHumanRaisedEvent)
+        assert reconstructed.payload.from_state == "quality"
+
+    def test_round_trip_reconstructs_gate_reached_event(self):
+        payload = GateReachedEvent(pipeline_id="pl-gate-1")
+        envelope = _make_envelope(
+            kind=EventKind.GATE_REACHED, action="gate_reached"
+        )
+        event = Event(envelope=envelope, payload=payload)
+
+        reconstructed = Event.from_json_line(event.to_json_line())
+
+        assert reconstructed.kind is EventKind.GATE_REACHED
+        assert isinstance(reconstructed.payload, GateReachedEvent)
+        assert reconstructed.payload.pipeline_id == "pl-gate-1"
 
     def test_malformed_json_raises_bus_error(self):
         with pytest.raises(BusError):
