@@ -169,9 +169,10 @@ def test_python_profile_lint_runs_configured_command(
 ):
     seen = {}
 
-    def fake_prepare(cmd, *, repo_root, scratch_dir, image):
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
         seen["cmd"] = list(cmd)
         seen["image"] = image
+        seen["extra_env"] = list(extra_env)
         return ["podman", "run", *cmd]
 
     monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
@@ -179,6 +180,64 @@ def test_python_profile_lint_runs_configured_command(
     assert rc == 0
     assert seen["cmd"] == ["python", "-m", "compileall", "-q", "src"]
     assert seen["image"] == "gleipnir-sandbox:latest"
+    # D1: compileall's .pyc writes must be redirected off the ro /work mount
+    # and into the rw scratch mount, or every file errors with
+    # `OSError: [Errno 30] Read-only file system` (the bug this test guards).
+    assert ("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache") in seen["extra_env"]
+
+
+def test_lint_exit_code_propagates_from_exec(monkeypatch, python_config_root):
+    """Regression guard: `_cmd_lint` must return exactly whatever `_exec`
+    (i.e. `subprocess.run(argv).returncode`) reports for the executed lint
+    command — never silently coerced to 0. This locks in the (verified-live,
+    already-correct) returncode-propagation path so a future regression that
+    swallows a nonzero `compileall` exit — an accidental `or 0`, a dropped
+    `return`, a `... | tail`-style code path, or any change that stops
+    forwarding `proc.returncode` — fails this test immediately, without
+    needing a real container or a real syntax error on disk.
+
+    Deliberately does NOT use the `captured_exec` fixture (which always
+    returns 0); it replaces `_exec` per-call so the exit code is the
+    independent variable under test.
+    """
+    monkeypatch.setattr(
+        cli, "prepare_sandbox_run", lambda cmd, **k: ["podman", "run", *cmd]
+    )
+
+    for code in (0, 1, 3):
+        monkeypatch.setattr(cli, "_exec", lambda argv, _code=code: _code)
+        rc = cli.main(["lint"], config_root=python_config_root)
+        assert rc == code
+
+
+def test_broker_profile_lint_also_gets_pycache_redirect(monkeypatch, captured_exec, tmp_path):
+    """The redirect is set unconditionally in the profile-agnostic `_cmd_lint`
+    (D2), so the broker profile's `compileall -q src/gleipnir/broker` lint
+    receives it too, with no separate code path."""
+    config_root = _write_config(
+        tmp_path,
+        """
+default_profile = "broker"
+
+[profile.broker]
+image = "gleipnir-sandbox:latest"
+test = ["true"]
+lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
+coverage = { unavailable = true, justified = "n/a" }
+""",
+    )
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["lint"], config_root=config_root)
+    assert rc == 0
+    assert seen["cmd"] == ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
+    assert ("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache") in seen["extra_env"]
 
 
 # ---------------------------------------------------------------------------

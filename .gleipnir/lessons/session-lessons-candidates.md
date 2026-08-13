@@ -397,6 +397,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C24 — An empty subagent return can hide a real blast-radius problem (orphaned fixture in the live tree); always verify against disk, and a discouraged-but-allowed approach will sometimes be taken
+
+**Observed (this session):** a `gleipnir-code` delegation to fix the sandbox lint bug returned COMPLETELY EMPTY (no report at all — the L-C4/L-C13 empty-return failure). Verifying against disk per standing discipline revealed it had (a) correctly applied the Bug-1 fix + tests, but (b) left an orphaned broken fixture file `_zzz_lint_arbiter_broken.py` sitting in the live `src/gleipnir/sandbox/` tree. The plan (per a spec-review note) had explicitly PREFERRED an isolated-fixture/`tmp_path` approach precisely to avoid mutating real `src/`, and only ALLOWED a real-tree fixture "if unavoidable" with mandatory cleanup — the agent took the discouraged real-tree route AND skipped the cleanup, and the empty return meant it reported none of this. Had the orchestrator trusted the empty return, broken debris would have been committed into the source tree.
+
+**Proposed lesson:** (a) reinforces L-C4/L-C13 — an empty subagent return is not just a lost report, it can conceal a real defect the agent introduced; ALWAYS verify against disk (git status + inspect actual changes), never assume empty == nothing-happened. (b) When a plan marks one approach PREFERRED and another merely ALLOWED-with-conditions, expect that the allowed-with-conditions route will sometimes be taken with its conditions skipped — so either forbid the risky route outright in the delegation, or have the orchestrator explicitly check the condition (here: git-clean, no stray fixture) as part of post-delegation verification. A blast-radius-relevant cleanup step should be verified, not trusted. (c) A leftover fixture in a linted/tested source tree is itself a latent false-signal source (it would break future lint/test runs) — treat stray files in src/ as a blast-radius incident, not cosmetic.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C25 — A bug report can be a measurement artifact; reproduce the raw signal before planning a fix around it
+
+**Observed (this session):** the sandbox-lint work was scoped around TWO bugs: (1) compileall failing on the read-only mount (real), and (2) lint returning "exit 0 despite every file erroring" — a suspected false-green that a full plan treated as a real defect (Decision D4, an investigation gate). On live reproduction, Bug 2 DID NOT EXIST: `compileall` correctly returns exit 1 on both syntax errors and read-only-mount OSErrors, and `bin/gleipnir-sandbox lint` propagates it faithfully. The original "exit 0" observation was an artifact of the orchestrator's OWN diagnostic command piping the output through `| tail`, so the shell reported tail's exit code (0), not compileall's (1). A plan, a spec-review round, and part of an implementation were all spent on a bug that was never real — caught only when the raw exit code was finally measured without the pipe.
+
+**Proposed lesson:** before scoping a fix around an observed failure signal (especially an exit code, a count, or a status), reproduce the RAW signal directly, isolated from the measurement harness that produced it — a piped/tailed/filtered command reports the LAST stage's exit code, not the command under test (use `${PIPESTATUS[0]}`, redirect to a file then check `$?`, or run bare). The cost of not doing so is real: planning/review/impl effort spent on a phantom defect. Corollary for the orchestrator specifically: when YOUR OWN earlier diagnostic is the source of a "bug" a plan is built on, re-verify that diagnostic before committing planning resources to it.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

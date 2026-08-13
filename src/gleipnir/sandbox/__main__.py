@@ -45,12 +45,27 @@ from pathlib import Path
 from .profiles import ProfileError, command_for, load_profiles, resolve_profile
 from .runtime import (
     SCRATCH_SUBPATH,
+    WORKDIR,
     SandboxError,
     detect_cri,
     ensure_machine_ready,
     image_available,
     prepare_sandbox_run,
 )
+
+# D1/D2/D3 (`.gleipnir/plans/sandbox-lint-fix.md`): `python -m compileall`
+# always writes `.pyc` files, and does so unconditionally into
+# `<source>/__pycache__/`. Since the source is mounted `:ro` at `WORKDIR`,
+# every file "compiled" fails with `OSError: [Errno 30] Read-only file
+# system`. Redirecting via `PYTHONPYCACHEPREFIX` into the existing rw
+# scratch mount (the same mount `_cmd_test`'s COVERAGE_FILE already uses)
+# keeps the real byte-compile check while never writing under the ro mount.
+# Built from the imported `WORKDIR`/`SCRATCH_SUBPATH` constants rather than
+# a hardcoded string so it stays coupled to `runtime.py`'s mount layout.
+# Set unconditionally in this profile-agnostic dispatch (D2) — a generic,
+# universally-safe CPython env var, inert for the node profile (`node
+# --check`), correct for both the python and broker `compileall` profiles.
+_LINT_PYCACHE_PREFIX = f"{WORKDIR}/{SCRATCH_SUBPATH}/pycache"
 
 # Used ONLY by the operator-only `image-build` bootstrap subcommand (never on
 # the agent-facing test/lint dispatch path, where `image` comes solely from
@@ -157,6 +172,7 @@ def _cmd_lint(args: argparse.Namespace, *, config_root: Path | None = None) -> i
             repo_root=repo,
             scratch_dir=_scratch_dir(repo),
             image=profile.image,
+            extra_env=[("PYTHONPYCACHEPREFIX", _LINT_PYCACHE_PREFIX)],
         )
     except SandboxError as exc:
         print(f"gleipnir-sandbox: {exc}", file=sys.stderr)
