@@ -137,6 +137,7 @@ def _http_request(
     url: str,
     *,
     token: Optional[str] = None,
+    platform: str,
     json_body: Optional[Dict[str, Any]] = None,
     timeout: float = 10.0,
 ) -> Dict[str, Any]:
@@ -147,7 +148,7 @@ def _http_request(
     """
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     if token:
-        if "github" in url:
+        if platform == "github":
             headers["Authorization"] = f"Bearer {token}"
         else:
             headers["PRIVATE-TOKEN"] = token
@@ -222,7 +223,11 @@ def issue_create(
             payload["description"] = body
 
     data = _http_request(
-        "POST", _issues_endpoint(remote), token=token, json_body=payload
+        "POST",
+        _issues_endpoint(remote),
+        token=token,
+        platform=remote.platform,
+        json_body=payload,
     )
     return {"success": True, "data": data}
 
@@ -235,7 +240,9 @@ def issue_update(remote: RemoteInfo, issue_id: Any, **fields: Any) -> Dict[str, 
 
     method = "PATCH" if remote.platform == "github" else "PUT"
     url = f"{_issues_endpoint(remote)}/{issue_id}"
-    data = _http_request(method, url, token=token, json_body=fields)
+    data = _http_request(
+        method, url, token=token, platform=remote.platform, json_body=fields
+    )
     return {"success": True, "data": data}
 
 
@@ -251,7 +258,9 @@ def issue_comment(remote: RemoteInfo, issue_id: Any, body: str) -> Dict[str, Any
     else:
         url = f"{base}/{issue_id}/notes"
 
-    data = _http_request("POST", url, token=token, json_body={"body": body})
+    data = _http_request(
+        "POST", url, token=token, platform=remote.platform, json_body={"body": body}
+    )
     return {"success": True, "data": data}
 
 
@@ -267,5 +276,7 @@ def issue_close(remote: RemoteInfo, issue_id: Any) -> Dict[str, Any]:
     else:
         method, payload = "PUT", {"state_event": "close"}
 
-    data = _http_request(method, url, token=token, json_body=payload)
+    data = _http_request(
+        method, url, token=token, platform=remote.platform, json_body=payload
+    )
     return {"success": True, "data": data}
