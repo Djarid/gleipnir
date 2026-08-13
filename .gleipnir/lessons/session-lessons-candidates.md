@@ -367,6 +367,36 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C21 — SESSION-STATE.md's "next" list can go stale relative to Tier-3 disk state; verify the target artifact directly before treating a carried-forward item as still open
+
+**Observed (this session):** `SESSION-STATE.md`'s "Open threads / next" section listed "Bake the `## Decisions (index)` table into `goals/plan-format.md` as a required plan section — from L-C14's own proposed lesson (Tier-3, needs build mode, not yet done)." A direct read of `.gleipnir/goals/plan-format.md`, done to act on that item, showed the table was already present and enforced as required section #1 (`# | Decision | Chosen | Rejected | Rationale`), explicitly citing L-C14 as its own rationale. The Tier-0 pointer's "not yet done" claim was simply wrong — the Tier-3 artifact had already been updated, and nothing in the pointer file's own bookkeeping caught that its "next" item had already landed.
+
+**Proposed lesson:** `SESSION-STATE.md` is explicitly non-authoritative (Tier-0) — before executing or reporting on ANY "next" item drawn from it, read the actual target artifact directly to confirm the work is genuinely still outstanding; never treat the pointer's "not yet done" framing as sufficient evidence on its own. This is L-C4/L-C15's verify-against-disk discipline applied specifically to pointer-file staleness. Consider also having session-scribe re-check each carried-forward "next" item against current disk state at each SESSION-STATE.md rewrite, rather than propagating a stale item unchanged.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C22 — The orchestrator should delegate a SESSION-STATE.md update immediately after verified work, not wait for the operator to ask
+
+**Observed (this session):** after verifying two open items (a completed plan-format change, and four restart-gated changes now confirmed live), the orchestrator reported the findings to the operator but did not delegate a SESSION-STATE.md correction until the operator explicitly asked for it, adding "you should be automatically doing this as each step is completed anyway." The pointer file (SESSION-STATE.md) is cheap to keep current and is the mechanism that prevents exactly the kind of staleness L-C21 just found — but only if it is updated as work completes, not batched for the operator to request.
+
+**Proposed lesson:** treat a SESSION-STATE.md correction as a standing, low-friction follow-up delegation whenever the orchestrator verifies that a listed open/next item is actually complete, stale, or otherwise changed — fire it in the same turn as the verification, without waiting to be asked. This mirrors the lesson-escalation discipline's "act on it, don't just mention it" principle applied to bookkeeping rather than lessons.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C23 — A long Decision Analysis embedded inside the `question` tool's field can make the options inaccessible; print it as response text first, then ask a short question
+
+**Observed (this session):** the orchestrator reproduced a full `## Decision Analysis` (~500 words including a scoring table) verbatim inside a single `question` call's question text, per L-C18's verbatim-reproduction rule. The operator reported being unable to see or select the options because there was too much text. L-C18 requires the analysis to be reproduced verbatim, but its own wording says the operator's prompt must "contain OR IMMEDIATELY PRECEDE" the analysis — it does not require the analysis to live inside the `question` tool call itself.
+
+**Proposed lesson:** when a Decision Analysis is long, print it verbatim as ordinary response text FIRST, then call `question` with a SHORT prompt (e.g. "Given the analysis above, which option do you converge on?") and the same options — never embed a long verbatim analysis inside the `question` field itself. This satisfies L-C18's verbatim requirement via the "immediately precede" clause while keeping the question tool's UI usable. Treat "long text breaks the question UI" as a known operational constraint to design around proactively, not something to discover after the operator can't see the options.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-12 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the

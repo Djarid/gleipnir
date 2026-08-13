@@ -280,11 +280,14 @@ timing is deferred — the plan is prepared now, applied later by the operator.
 
 ## Open Questions
 
-1. **Freshness window (1 hour) — NOT decided.** The incident involved a
+1. **Freshness window (1 hour) — RESOLVED (2026-08-12).** The incident involved a
    17-day-stale bridge; the current window is `DEFAULT_MAX_AGE_SECONDS = 3600`
-   (`src/gleipnir/engine/bridge.py`). The operator has **not** made a call on
-   whether 1 hour is the intended window. **Left explicitly open** for later — do
-   not decide it in the recovery-path work. (Flagged, not scoped in.)
+   (`src/gleipnir/engine/bridge.py`). The operator converged on this session
+   (via the orchestrator's `question` tool) to **keep the 1-hour window unchanged**,
+   reasoning that the already-built `bridge-status` / `bridge-reset` recovery tooling
+   (commit `1c91a19`) resolves the L-C19 pain point: staleness is diagnosable and
+   clearable, not a dead end. The short window preserves the security invariant
+   (tight fail-closed posture) without the earlier cost of frequent re-mints.
 2. **Whether `bridge-status` should be a first slice on its own.** The operator
    converged on both subcommands; noting that a pure-diagnostic first slice
    (zero new write surface) remains a valid staging option if `gleipnir-plan`

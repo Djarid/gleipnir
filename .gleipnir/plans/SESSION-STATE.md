@@ -229,6 +229,13 @@ push_current_branch functional in production; dogfood node test 16/16 pass in-co
 
 ## Open threads / next
 
+**Wed 12 Aug 2026 (continued) — Prose/config-only track + broker test coverage:**
+- **Prose/config-only pipeline track — APPLIED + VERIFIED this session (build mode).** Converged on Approach B (brainstorm file `.gleipnir/plans/prose-config-only-track-brainstorm.md`). Plan `.gleipnir/plans/prose-config-only-track.md` (571 lines) spec-review APPROVED WITH NOTES (final, three rounds). Amendment now APPLIED to `.gleipnir/stage-role-map.md`: file grew from 61 to 167 lines; new "Prose/config-only track" section at line 63; byte-for-byte match to reviewed plan block confirmed. Purely additive — no existing lines altered. **Three non-blocking notes for FUTURE tightening pass** (not this plan's scope, remain open): (a) correspondence gate's "where applicable" same-file hedge is underdefined; (b) check pattern/target but not explicitly post-change artifact state; (c) fresh same-class non-blocking gap: repo-root `.gitignore` (governs key/digest git-tracking) also unenumerated by both axes, alongside noted `.envrc`/`pyproject.toml`. **Status: CLOSED — APPLIED + VERIFIED.**
+- **Broker git MCP server coverage gap — COMPLETE + MEASURED this session.** Test file `tests/test_broker_git_mcp_server.py` (~612 lines) per spec-reviewed plan `.gleipnir/plans/broker-git-coverage-gap.md` (verdict: APPROVED WITH NOTES). Both operator actions completed: (a) `.gleipnir/sandbox/profiles.toml` line 60 now includes `tests/test_broker_git_mcp_server.py` (6 files in broker profile); (b) broker profile run in pinned sandbox image measured coverage. **RESULT: 78 passed / 0 failed; `src/gleipnir/broker/git/mcp_server.py` coverage rose from 52% to 99% (124 stmts / 1 missed / 58 branch / 1 partial).** Only miss is line 417 (`if __name__=="__main__"` entry guard, unreachable under pytest). Comfortably clears ≥85% target. New test file added 27 tests, all green; no regression in other 5 broker test files. **NOTE:** aggregate broker TOTAL is 77% only because SEPARATE `pm/mcp_server.py` is at 25% — out of scope for this plan. That remains the pre-existing "pm broker coverage" follow-up item, distinct from the git-server gap now closed (52%→99%).
+- **L-C23 recorded (this round).** Lesson candidate appended: "A long Decision Analysis embedded inside the `question` tool's field makes the options inaccessible; print it as response text first, then ask a short question." Fix: print analysis verbatim as response text first, then call `question` with SHORT prompt ("Given the analysis above, which option do you converge on?"). This satisfies L-C18 (verbatim reproduction, via "immediately precede" clause) while keeping question UI usable. Dated 2026-08-12, same provenance pattern as L-C19–L-C22 (operator-confirmed via question, interim gate).
+
+---
+
 **Wed 12 Aug 2026 — Post-bridge-recovery diagnosis session:**
 - Session found and fixed the root cause of a blocked/inaccessible pipeline session: stale G-5 bridge
   + stale ROLE_STATES binding predating the brainstorm/plan split. **Root-cause commits:**
@@ -236,23 +243,34 @@ push_current_branch functional in production; dogfood node test 16/16 pass in-co
   (test_bin_executable.py regression guard).
 - **L-C19 and L-C20 recorded in lessons file** — now formally captured as candidate lessons:
    L-C19 (recovery-path as required design question for fail-closed gates); L-C20 (parity test
-   guards drift in "derived, not duplicated" projections). Both dated 2026-08-12.
-- **Bridge-recovery Open Question #1 (deferred)** — whether the 1-hour freshness window on the
-   G-5 bridge should be revisited. Recorded in `.gleipnir/plans/bridge-recovery-brainstorm.md`;
-   explicitly undecided, pending operator convergence. Does not block the implemented recovery tool.
+   guards drift in "derived, not duplicated" projections). Both dated 2026-08-12. **L-C21 and
+   L-C22 also appended this session:** L-C21 (SESSION-STATE.md's "next" list can go stale
+   relative to Tier-3 disk state — verify the target artifact directly before treating a
+   carried-forward item as still open); L-C22 (the orchestrator should delegate a SESSION-STATE.md
+   update immediately after verified work, not wait for the operator to ask). Both dated 2026-08-12,
+   same provenance pattern as L-C19/L-C20 (operator-confirmed via question tool this session).
+- **Bridge-recovery Open Question #1 (RESOLVED, 2026-08-12)** — 1-hour freshness window on the
+   G-5 bridge. Operator converged (via orchestrator `question` tool) to keep it unchanged,
+   reasoning that the built recovery tooling (commit `1c91a19`) resolves L-C19 pain
+   (staleness is diagnosable/clearable, not a dead end), so a short window keeps the security
+   invariant tight without the earlier cost.
 - **`## Session resume` section in `.gleipnir/AGENTS.md` now live (RESTART-GATED)** — Applied to Tier-3;
    takes effect on the very next session start. The next orchestrator session will be the first to
    exercise the new auto-resume instruction (read SESSION-STATE.md conditional on real prior work).
-- **Small/immediate:** Bake the `## Decisions (index)` table into `goals/plan-format.md` as a
-   required plan section — from L-C14's own proposed lesson (Tier-3, needs build mode, not yet done).
+- **`## Decisions (index)` table in plan-format.md — VERIFIED COMPLETE this session.**
+   Disk re-verify found the table already present in `.gleipnir/goals/plan-format.md` (lines 13–22)
+   as Required Section #1, with exact column spec and L-C14 rationale cite. SESSION-STATE.md had
+   stale claim that this was "not yet done" — a discrepancy flagged as candidate lesson on verifying
+   "next" items against disk before treating them as still open.
 - **Deferred convergence items:**
    - Stage-role-map precedence question for prose/config-only plans (flagged during escalation-process plan, not yet ratified).
-- **Follow-up candidate:** `src/gleipnir/broker/git/mcp_server.py` line coverage is 52% (guard path
-  covered; other broker tool functions not) — a test-authoring follow-up to close gaps.
 - **S-2 activation still deferred** (operator call) — unchanged.
-- **RESTART-GATED changes (take effect next session):**
-   - Tier-3 edits: glob-guidance Tooling notes, session-scribe glob pointer, skills/README GOTCHA-inlining policy.
-   - Git-guard plugin: config-scan gate on all gleipnir-git_* writes.
+- **RESTART-GATED changes — NOW CONFIRMED LIVE this session (not still pending):**
+   All four Tier-3 edits verified on-disk and active:
+   - `.gleipnir/AGENTS.md` `## Tooling notes` section (glob/`path` guidance) — present and live.
+   - `.gleipnir/agents/session-scribe.md` glob-pointer bullet (reference to Tooling-notes rule) — present and live.
+   - `.gleipnir/skills/README.md` `## Who loads GOTCHA` policy section (intentional per-role inlining) — present and live.
+   - `.gleipnir/plugins/git-guard.ts` git-guard plugin with ALWAYS-ACTIVE config-scan gate on `gleipnir-git_commit_changes` / `gleipnir-git_push_current_branch` — present and wired.
 
 ## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
 
