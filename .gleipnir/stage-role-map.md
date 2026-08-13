@@ -95,9 +95,27 @@ A track-eligible plan is **enforcement-bearing** (→ hardened path) if EITHER:
 - **(a) path rule:** any path in `P` is under the enforcement-path set `E` =
   `.gleipnir/agents/**`, `.gleipnir/plugins/**`, `.gleipnir/sandbox/**`,
   `.gleipnir/policy/**`, `.gleipnir/keys/**`, `.gleipnir/stage-role-map.md`
-  itself, or the root opencode config `opencode.jsonc` / `**/opencode.json`
+  itself; the root opencode config `opencode.jsonc` / `**/opencode.json`
   (it loads this map via `instructions`, gates the MCP brokers via `enabled`,
-  and sets `default_agent`); **or**
+  and sets `default_agent`); or the repo-root cross-cutting files
+  `.gitignore`, `.envrc`, and `pyproject.toml` — each **always** hardened by
+  exact-path match. Rationale, per file: `.gitignore` governs what reaches
+  version control, including whether the `.gleipnir/keys/**` integrity digests
+  (the G-3 audit trail — versioned by policy, see `keys/README.md`) keep being
+  committed; a plan silently adding `*.digest` there is an audit-trail bypass.
+  `.envrc` sets `OPENCODE_CONFIG_DIR=.gleipnir`, wiring which config dir
+  opencode loads at all. `pyproject.toml` carries the dependency ranges bound
+  to the stdlib-only enforcement-core constraint
+  (`decisions/runtime-and-deps.md`). These are enumerated **explicitly** (the
+  `opencode.jsonc`/round-1 precedent), not via a fuzzy "repo-root files that
+  wire enforcement" predicate: that predicate is a judgment call, not
+  grep-able, and would reintroduce the non-determinism the classifier exists to
+  remove. New repo-root cross-cutting files join `E` by explicit amendment, not
+  by a predicate. `.gitignore` is always-hardened (not conditional on which
+  patterns it touches) because "which ignore patterns are enforcement-adjacent"
+  is itself a judgment surface — always-hardened over-includes a few benign
+  edits but never under-reviews an audit-trail bypass (integrity > efficiency,
+  as with the standalone-YAML disqualification above); **or**
 - **(b) content rule:** an added/changed line matches a grant/enforcement
   pattern `G`, in EITHER its YAML/frontmatter form OR its JSON(C) form:
     - YAML: a `permission:` or `tools:` block, or a capability line
@@ -153,15 +171,31 @@ substantively vague is the exact false-success L-C7 exists to catch and MUST be
 rejected at spec-review.
 
 **Correspondence rule:** the cited artifact must actually test the form it
-claims to. The pattern/target in `evidence` must be the **same over-broad form
-named in `over_broad_form_checked`** (and, where applicable, the same file as
-`grant`) — grepping for an unrelated pattern is reproducible but proves nothing
-and MUST be rejected. (E.g. a `lessons/**`-absent claim requires `evidence` that
-greps for `lessons/**` specifically, not some other string.)
+claims to, in the right file. The pattern/target in `evidence` MUST be the
+**same over-broad form named in `over_broad_form_checked`**, AND the file the
+evidence targets MUST be the **same file named in `grant`**. (There is no
+"where applicable" exception: every grant names a specific target file, so
+same-file matching always applies — a grant with no target file does not
+occur.) Grepping for an unrelated pattern, or grepping the right pattern in the
+wrong file, is reproducible but proves nothing and MUST be rejected. (E.g. a
+`lessons/**`-absent claim requires `evidence` that greps for `lessons/**`
+specifically, in the file the grant applies to, not some other string or file.)
+
+**Post-change-state rule:** the `evidence` MUST be captured against the
+**applied / post-change state** of the target file — the state after the plan's
+edit is applied — not a stale or pre-change copy. This applies to **all**
+evidence forms: a `grep`/`diff` MUST be run against the post-apply file, a
+digest MUST be computed over the post-apply bytes, and a byte-for-byte quote
+MUST be of the applied line. (The quote form already implies this; this rule
+makes it explicit for the grep/diff/digest forms, where a pattern match against
+the wrong file *version* would otherwise satisfy the substance and
+correspondence rules while proving nothing about what was actually applied.)
 
 An enforcement-bearing prose/config plan may **not** report SUCCESS unless (i)
 two distinct pass verdicts exist, (ii) the negative-check attestation is present
 with all fields and `attested_by ≠ author`, (iii) every `evidence` field cites a
-reproducible artifact, not a narrative, and (iv) each `evidence` artifact tests
-the specific form named in that row's `over_broad_form_checked` (not an unrelated
-pattern).
+reproducible artifact, not a narrative, (iv) each `evidence` artifact tests the
+specific form named in that row's `over_broad_form_checked`, in the same file
+named in that row's `grant` (not an unrelated pattern and not the wrong file),
+and (v) every `evidence` artifact was captured against the applied / post-change
+state of the target file.
