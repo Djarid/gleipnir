@@ -28,6 +28,7 @@ collect_ignore = []
 if importlib.util.find_spec("mcp") is None:
     collect_ignore.append("test_broker_tool_surface.py")
     collect_ignore.append("test_broker_git_commit_guard.py")
+    collect_ignore.append("test_broker_git_mcp_server.py")
 
 
 def pytest_configure(config):
