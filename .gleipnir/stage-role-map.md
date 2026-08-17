@@ -199,3 +199,93 @@ specific form named in that row's `over_broad_form_checked`, in the same file
 named in that row's `grant` (not an unrelated pattern and not the wrong file),
 and (v) every `evidence` artifact was captured against the applied / post-change
 state of the target file.
+
+### Cognition layer (AETOS two-gate mechanism — composed, not parallel)
+
+**Status: authored, operator-applied. See `decisions/cognition-layer.md`.**
+The cognition layer verifies reasoning was actually done. It is realised as
+two gates and COMPOSES with the machinery above — it adds no new guard and
+does NOT amend G-5 (it lives in the plan-format artifact-shape layer + this
+review-rubric layer).
+
+- **Gate 1 (design-time)** is the required **Design Principles** section in
+  `goals/plan-format.md`. Its form is routed in THREE cases, keyed on the SAME
+  Axis-1 set `X` above plus one author-declared/reviewer-checkable sub-question
+  ("does the touched `X`-member have class/function/module structure?"):
+  (i) OOP/functional code (`P ∩ X ≠ ∅`, has OOP structure) → SOLID+DRY+SRP+
+  Design Intent; (ii) executable-but-non-OOP (`P ∩ X ≠ ∅`, a Makefile / CI
+  YAML / shell / `bin/**` / `hooks/**` / shebang-config) → DRY+Design Intent,
+  SOLID/SRP attested `N/A — no object/function structure`; (iii)
+  prose/config-only (`P ∩ X = ∅`) → Design Intent only, SOLID/DRY/SRP attested
+  `N/A — no executable artifact`. ONE predicate (`X`), one refinement — no
+  second classifier. The **Design Intent MUST be specific and falsifiable** (a
+  named responsibility/boundary/constraint, not a generic quality aspiration),
+  per the anti-vacuity rule mirroring the SUBSTANCE rule above.
+- **Gate 2 (review-time)** composes into THIS section's two passes, not as new
+  passes:
+  - SOLID/DRY/SRP is a checklist **dimension of the "Blast-radius /
+    false-success" pass** (2), Important severity, scoped by the Gate-1
+    three-case routing (full SOLID/DRY for case (i); DRY-only for case (ii);
+    skipped for case (iii)).
+  - The **spec-vs-implementation cross-check is TWO distinct checks bound to
+    two stages** (the implementation does not exist at spec-review):
+    - at **spec-review** it is the **intent-quality check** — a **sub-check of
+      the "Spec-conformance" pass** (1) verifying the Design Intent is itself
+      specific/falsifiable and not a vacuous aspiration (rejected if vacuous,
+      ties to the anti-vacuity rule);
+    - at **quality** it is the **honour check** — does the applied
+      implementation honour the stated Design Intent/principle? A divergence is
+      **Important** severity: it **blocks the `git` stage unless explicitly
+      acknowledged by the operator** (the reviewer never self-clears it, L-C8).
+    For a prose/config-only-track plan (single collapsed spec-review pass, no
+    separate post-implementation stage) both checks run once at that pass
+    against the applied edit. The cross-check applies to EVERY plan including
+    light-path plans (it is the genuineness proxy).
+  - **`[D]`/`[J]` tags** annotate the evidence basis of every finding and every
+    negative-check attestation `evidence` entry (`[D]` = tool-produced, e.g.
+    `bin/gleipnir-sandbox`; `[J]` = judgment). This formalises the existing
+    substance rule; it is not a second mechanism.
+
+**Recording an operator acknowledgement.** A divergence found at `quality` is
+Important and blocks `git` until the operator acknowledges it. Because plans
+are Tier-0 and disposable, the acknowledgement is NOT recorded only in the
+plan: the divergence escalates to the operator, who records the accepted
+divergence in the durable decision record (`decisions/cognition-layer.md` or
+the change's own decision record). The disposable plan may note it, but the
+authoritative home is the Tier-3 decision record.
+
+#### Per-stage cognition binding (coverage — Approach D's documented half)
+
+Every artifact-producing stage's cognition is either an enforced shape or an
+explicitly-documented existing binding, so the coverage question cannot
+re-surface as a phantom gap (L-C14; the gotcha-loading precedent):
+
+| Stage | Cognition binding | Enforced by |
+|---|---|---|
+| brainstorm | Clarify → Explore → Propose → Converge + `## Decision Analysis` | `skills/brainstorm` shape + precept-10 gate |
+| plan | ATLAS sections + Decisions index + **Design Principles** | `goals/plan-format.md` Validation (Gate 1) |
+| spec-review | Spec-conformance pass **incl. the cross-check's intent-quality sub-check** (Design Intent is specific/falsifiable, not vacuous) | this section (Gate 2) |
+| test | The pre-written test IS the correctness shape | test-first pipeline (Axiom 1) — bounded, no new shape |
+| code | Bounded by plan + ATLAS-Assemble order + pre-written test | the test is the arbiter — bounded, no new shape |
+| quality | Blast-radius pass **incl. SOLID/DRY dimension** + the cross-check's **honour check** (applied impl. honours stated intent) | this section (Gate 2) |
+
+`test` and `code` intentionally carry NO new cognitive shape: their cognition
+is already bounded by the pre-written test (documenting the existing binding,
+per Approach D — NOT inventing a redundant shape).
+
+#### Guard-vocabulary note
+
+Cognition-genuineness is a plan-format-shape + review-rubric concern. It is
+**NOT a new guard** and does **NOT amend G-5**: no adversary forges a reasoning
+process (the G-1..G-6 guards each close an adversarial hole); a busy LLM fills
+a section perfunctorily, which is a quality concern answered by review, not by
+a guard. Its only mechanically-enforceable part (shape presence) is already
+the `plan-format.md` Validation + G-5 completion edge; its non-mechanical part
+(genuineness) is irreducibly review — the cross-check is its enforceable proxy.
+
+#### Model-sizing linkage
+
+The cross-check is what makes the "Opus-at-plan assumes good framing" spend
+(see "Model-sizing principle" above) *safe* rather than merely *assumed*: it
+converts "we assume the framing is good" into "framing genuineness is an
+explicit, recorded review obligation whose divergences block the git stage."
