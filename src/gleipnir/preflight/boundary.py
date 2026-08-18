@@ -120,7 +120,9 @@ __all__ = [
     "KeyState",
     "check_key_state",
     "Verdict",
+    "RequestedMode",
     "DEV_MODE_LABEL",
+    "UNCAGED_DEFAULT_LABEL",
     "PreflightDecision",
     "decide",
     "probe_write_as_agent",
@@ -503,7 +505,24 @@ class Verdict(Enum):
     REFUSE = "refuse"
 
 
+class RequestedMode(Enum):
+    """The operator's INTENDED posture for this launch (D1/D4).
+
+    Influences ONLY the returned label + the CLI's exit-code interpretation.
+    It NEVER enters the all_closed computation: a CAGED request cannot
+    manufacture CLOSED -- closure stays gated solely on real probe evidence
+    (the anti-false-assurance invariant, brief D1)."""
+
+    UNCAGED = "uncaged"
+    CAGED = "caged"
+
+
 DEV_MODE_LABEL = "G-1 NOT closed (dev-mode)"
+
+# D4: the legitimate, non-failing default label. The deficiency label
+# (DEV_MODE_LABEL) is retained ONLY for a requested-CAGED run that did not
+# reach CLOSED -- never for the uncaged default.
+UNCAGED_DEFAULT_LABEL = "uncaged (key-protected floor) -- default operator-trust posture"
 
 
 @dataclass(frozen=True)
@@ -518,6 +537,7 @@ def decide(
     key_state: KeyState,
     *,
     override_ack: bool = False,
+    requested_mode: RequestedMode = RequestedMode.UNCAGED,
 ) -> PreflightDecision:
     """Aggregate every enforcement path's verdict + the key-state check into
     one `PreflightDecision`. `CLOSED` only if every path is `CLOSED` AND
@@ -557,9 +577,18 @@ def decide(
             Verdict.CLOSED, "G-1 boundary held at the OS-perms floor", tuple(reasons)
         )
     if override_ack:
+        # override path unchanged: honest DEV_MODE_LABEL, PROCEED_UNCLOSED.
         return PreflightDecision(Verdict.PROCEED_UNCLOSED, DEV_MODE_LABEL, tuple(reasons))
+    if requested_mode is RequestedMode.CAGED:
+        # A cage was REQUESTED and not reached -- stays loud, fail-closed. Per
+        # D4 the deficiency label (DEV_MODE_LABEL) is retained here, and ONLY
+        # here (a requested-CAGED run that did not reach CLOSED) -- never for
+        # the uncaged default below.
+        return PreflightDecision(Verdict.REFUSE, DEV_MODE_LABEL, tuple(reasons))
+    # Uncaged default: legitimate, non-failing posture. Reasons retained as
+    # INFORMATIONAL, not a deficiency dump.
     return PreflightDecision(
-        Verdict.REFUSE, "G-1 boundary NOT closed; refusing to launch", tuple(reasons)
+        Verdict.PROCEED_UNCLOSED, UNCAGED_DEFAULT_LABEL, tuple(reasons)
     )
 
 
@@ -988,6 +1017,7 @@ def run_preflight(
     agent_gid: int,
     *,
     override_ack: bool = False,
+    requested_mode: RequestedMode = RequestedMode.UNCAGED,
     key_env_var: str = KEY_ENV_VAR,
     write_probe: Callable[[Path, int, int], ProbeResult] = probe_write_as_agent,
     read_probe: Callable[[Path, int, int], ProbeResult] = probe_read_key_as_agent,
@@ -1009,4 +1039,9 @@ def run_preflight(
         write_probe=write_probe,
         read_probe=read_probe,
     )
-    return decide(path_probes, key_state, override_ack=override_ack)
+    return decide(
+        path_probes,
+        key_state,
+        override_ack=override_ack,
+        requested_mode=requested_mode,
+    )

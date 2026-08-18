@@ -49,6 +49,7 @@ from gleipnir.preflight.boundary import (
     Posture,
     ProbeOutcome,
     ProbeResult,
+    RequestedMode,
 )
 from gleipnir.preflight.boundary import Verdict as PreflightVerdict
 from gleipnir.preflight.boundary import decide, run_preflight
@@ -358,6 +359,11 @@ def test_preflight_refuses_on_writable_enforcement_file_without_override(
         agent_uid=os.getuid(),
         agent_gid=os.getgid(),
         override_ack=False,
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a requested cage that isn't closed must refuse", not the
+        # (now legitimate) uncaged default.
+        requested_mode=RequestedMode.CAGED,
         write_probe=_write_ok,
         read_probe=read_denied,
     )
@@ -382,6 +388,11 @@ def test_preflight_refuses_when_key_is_absent(
         agent_uid=os.getuid(),
         agent_gid=os.getgid(),
         override_ack=False,
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an absent key + a requested cage must refuse", not the
+        # (now legitimate) uncaged default.
+        requested_mode=RequestedMode.CAGED,
         write_probe=write_denied,
         read_probe=write_denied,
     )

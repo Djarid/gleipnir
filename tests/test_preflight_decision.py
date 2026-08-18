@@ -104,7 +104,10 @@ class TestDecideWritableCaseRefuses:
                 pb.ProbeResult(pb.ProbeOutcome.WRITE_OK),
             ),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a writable path + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("AGENTS.md" in r for r in decision.reasons)
 
@@ -131,7 +134,10 @@ class TestDecideKeyReadableCaseRefuses:
                 read_result=pb.ProbeResult(pb.ProbeOutcome.WRITE_OK),  # but key IS readable
             ),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a readable key + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("keys/**" in r for r in decision.reasons)
 
@@ -141,12 +147,18 @@ class TestDecideProbeErrorIsFailClosed:
         probes = [
             pb.PathProbe("agents/*.md", pb.Posture.RO, pb.ProbeResult(pb.ProbeOutcome.PROBE_ERROR, "boom")),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a probe error + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
 
     def test_empty_path_probes_is_ambiguous_and_refuses(self):
         """No evidence is not evidence of closure."""
-        decision = pb.decide([], pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "no evidence + a requested cage must refuse".
+        decision = pb.decide([], pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
 
 
@@ -164,7 +176,10 @@ class TestB1DropFailedAndUnverifiedNeverCloseAndAlwaysRefuse:
                 pb.ProbeResult(pb.ProbeOutcome.DROP_FAILED, "setuid: Operation not permitted"),
             ),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a failed privilege drop + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is not pb.Verdict.CLOSED
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("drop_failed" in r for r in decision.reasons)
@@ -178,7 +193,10 @@ class TestB1DropFailedAndUnverifiedNeverCloseAndAlwaysRefuse:
                 read_result=pb.ProbeResult(pb.ProbeOutcome.WRITE_DENIED),
             ),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an unverified privilege drop + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is not pb.Verdict.CLOSED
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("drop_unverified" in r for r in decision.reasons)
@@ -192,7 +210,10 @@ class TestB1DropFailedAndUnverifiedNeverCloseAndAlwaysRefuse:
                 read_result=pb.ProbeResult(pb.ProbeOutcome.DROP_UNVERIFIED, "readback mismatch"),
             ),
         ]
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an unverified read-probe drop + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
 
     def test_classify_probe_result_has_no_path_to_closed_via_drop_outcomes(self):
@@ -234,7 +255,17 @@ class TestOverrideCanEscalateButNeverReachesClosed:
         for probes in not_closed_probe_sets:
             decision = pb.decide(probes, pb.KeyState.PRESENT, override_ack=True)
             assert decision.verdict is not pb.Verdict.CLOSED
-            decision_no_override = pb.decide(probes, pb.KeyState.PRESENT, override_ack=False)
+            # fail-closed guarantee now lives under requested_mode=CAGED per
+            # operating-posture.md default-uncaged flip: this specific
+            # no-override check's intent is "a requested cage that is not
+            # closed must refuse" -- the (now legitimate) uncaged default
+            # is a separate, non-refusing behaviour, not tested here.
+            decision_no_override = pb.decide(
+                probes,
+                pb.KeyState.PRESENT,
+                override_ack=False,
+                requested_mode=pb.RequestedMode.CAGED,
+            )
             assert decision_no_override.verdict is pb.Verdict.REFUSE
 
         for key_state in (pb.KeyState.ABSENT, pb.KeyState.EMPTY):
@@ -244,12 +275,26 @@ class TestOverrideCanEscalateButNeverReachesClosed:
 
 class TestKeyAbsentVsEmpty:
     def test_key_absent_refuses(self):
-        decision = pb.decide([_closed_probe("agents/*.md")], pb.KeyState.ABSENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an absent key + a requested cage must refuse".
+        decision = pb.decide(
+            [_closed_probe("agents/*.md")],
+            pb.KeyState.ABSENT,
+            requested_mode=pb.RequestedMode.CAGED,
+        )
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("absent" in r for r in decision.reasons)
 
     def test_key_empty_refuses(self):
-        decision = pb.decide([_closed_probe("agents/*.md")], pb.KeyState.EMPTY)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an empty key + a requested cage must refuse".
+        decision = pb.decide(
+            [_closed_probe("agents/*.md")],
+            pb.KeyState.EMPTY,
+            requested_mode=pb.RequestedMode.CAGED,
+        )
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("empty" in r for r in decision.reasons)
 
@@ -432,7 +477,10 @@ class TestCollectPathProbes:
             write_probe=write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a writable enforcement path + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("plugins/**" in r for r in decision.reasons)
 
@@ -455,7 +503,10 @@ class TestCollectPathProbes:
             write_probe=write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "the arbiter dir writable + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("sandbox/**" in r for r in decision.reasons)
 
@@ -478,7 +529,11 @@ class TestCollectPathProbes:
             write_probe=write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a writable file masked by a denied dir + a requested cage must
+        # refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("profiles.toml" in r for r in decision.reasons)
 
@@ -509,7 +564,11 @@ class TestCollectPathProbes:
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a missing non-tolerated enforcement path + a requested cage must
+        # refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("missing" in r for r in decision.reasons)
 
@@ -530,7 +589,10 @@ class TestCollectPathProbes:
         )
         labels = [p.label for p in probes]
         assert "sandbox/**" in labels
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a missing arbiter config + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert decision.verdict is not pb.Verdict.CLOSED
         assert any("sandbox" in r and "missing" in r for r in decision.reasons)
@@ -544,7 +606,10 @@ class TestCollectPathProbes:
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.ABSENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "an absent key path + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.ABSENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
 
 
@@ -788,7 +853,11 @@ class TestBlockerOneFalseClosedOnDirectoryEntries:
             write_probe=write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a writable file masked by a denied directory + a requested cage
+        # must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert decision.verdict is not pb.Verdict.CLOSED
         assert any("orchestrator.md" in r for r in decision.reasons)
@@ -851,7 +920,10 @@ class TestBlockerOneFalseClosedOnDirectoryEntries:
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a real symlink escape + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert any("orchestrator.md" in r and "escape" in r for r in decision.reasons)
 
@@ -902,7 +974,10 @@ class TestResidualFalseClosedSymlinkedSubdirEscape:
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a symlinked-subdir escape + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert decision.verdict is not pb.Verdict.CLOSED
         assert any("link" in r and "escape" in r for r in decision.reasons)
@@ -955,7 +1030,10 @@ class TestResidualFailOpenByOmissionWalkError:
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )
-        decision = pb.decide(probes, pb.KeyState.PRESENT)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: this test's intent is
+        # "a mid-walk scan failure + a requested cage must refuse".
+        decision = pb.decide(probes, pb.KeyState.PRESENT, requested_mode=pb.RequestedMode.CAGED)
         assert decision.verdict is pb.Verdict.REFUSE
         assert decision.verdict is not pb.Verdict.CLOSED
         assert any("scandir failed" in r for r in decision.reasons)
@@ -1100,10 +1178,14 @@ class TestRunPreflight:
 
     def test_run_preflight_refuses_when_key_env_unset(self, config_root: Path, monkeypatch):
         monkeypatch.delenv(pb.KEY_ENV_VAR, raising=False)
+        # fail-closed guarantee now lives under requested_mode=CAGED per
+        # operating-posture.md default-uncaged flip: an unset key must still
+        # REFUSE when a cage is REQUESTED (the safety property this test protects).
         decision = pb.run_preflight(
             config_root,
             agent_uid=999,
             agent_gid=999,
+            requested_mode=pb.RequestedMode.CAGED,
             write_probe=_all_denied_write_probe,
             read_probe=_all_denied_read_probe,
         )

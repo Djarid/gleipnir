@@ -1,5 +1,13 @@
 # Decision: S-2 / G-1 closure — first slice (fail-closed boundary preflight)
 
+> **SUPERSEDED IN PART by `operating-posture.md` (default-uncaged paradigm).**
+> The "pending operator activation toward always-on" framing in this record
+> describes the OPT-IN CAGED mode, not the default. Gleipnir now operates
+> UNCAGED by default (trusted single-principal terminal); the S-2 cage is a
+> deliberate opt-in. This record's mechanisms remain correct WITHIN a caged
+> commitment. See `operating-posture.md` for the governing thesis, threat
+> envelope, and the three opt-in-caged requirements.
+
 **Status:** decided and implemented. Durable decision record (Tier-3, operator-
 authored via the built-in escape hatch). Converged via the orchestrator-
 surfaced decision gate. Plan of record: `../plans/s2-g1-closure-first-slice.md`

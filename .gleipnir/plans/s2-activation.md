@@ -1,5 +1,12 @@
 # Plan: S-2 Activation — turning the verified boundary ON (staged hybrid, Approach C)
 
+> **PARADIGM NOTE (default-uncaged, see `../decisions/operating-posture.md`).**
+> The N≥5-clean-session anti-drift gate (D-G) applies only *within an opt-in
+> caged commitment*. Under the current paradigm, staying UNCAGED is a legitimate
+> default — not "drift" to escape. This whole plan is now the procedure for the
+> OPT-IN caged mode (engaged via `--mode caged` + these OS acts), not an
+> always-on end-state. The `go-caged` runbook is its operator-facing front door.
+
 > **Source brief:** `.gleipnir/plans/s2-activation-brainstorm.md`
 > (**OPERATOR-CONVERGED**, precept-10 gate: **Approach C — staged hybrid landing
 > on the Approach-A uid-floor**). This plan runs ATLAS Architect/Trace on that

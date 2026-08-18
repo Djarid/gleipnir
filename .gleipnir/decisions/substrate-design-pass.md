@@ -1,5 +1,13 @@
 # Substrate Design Pass — Build-Order Step 1
 
+> **SUPERSEDED IN PART by `operating-posture.md` (default-uncaged paradigm).**
+> The "guards take effect last / no session over an unverified boundary"
+> framing in this record describes the OPT-IN CAGED mode, not the default.
+> Gleipnir now operates UNCAGED by default (trusted single-principal terminal);
+> the S-2 cage is a deliberate opt-in. This record's mechanisms remain correct
+> WITHIN a caged commitment. See `operating-posture.md` for the governing
+> thesis, threat envelope, and the three opt-in-caged requirements.
+
 **The load-bearing step.** Per spec build order step 1, D-1 (runtime target)
 and D-4 (trust-boundary substrate) are the two load-bearing unknowns and must
 be resolved together in one pass, because the trust boundary is expressed in

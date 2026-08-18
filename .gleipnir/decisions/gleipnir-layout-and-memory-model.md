@@ -1,5 +1,14 @@
 # Decision: `.gleipnir/` trust-tiered layout and memory-write model
 
+> **SUPERSEDED IN PART by `operating-posture.md` (default-uncaged paradigm).**
+> The "Tier-3 agent-unwritable invariant" in this record describes the OPT-IN
+> CAGED mode, not the default. Gleipnir now operates UNCAGED by default
+> (trusted single-principal terminal): under operator instruction an agent may
+> write Tier-3. The Tier-3-unwritable invariant holds WITHIN an opt-in caged
+> commitment. The `keys/` mode-600 floor is retained in BOTH modes. See
+> `operating-posture.md` for the governing thesis, threat envelope, and the
+> three opt-in-caged requirements.
+
 **Status:** decided (this session). Durable decision record. Realises spec
 requirement **G-6 (Memory is not poisonable)** at the directory-layout and
 write-path level. Authored by the operator via the escape hatch (the built-in

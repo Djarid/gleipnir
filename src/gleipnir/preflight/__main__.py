@@ -13,9 +13,20 @@ permission map — that omission is the point, not an oversight.
 Exit codes (fail-closed; distinct codes so the launch wrapper can branch):
 
     0  CLOSED             boundary holds; launch OK
-    1  REFUSE             boundary NOT closed and no override; DO NOT launch
-    2  PROCEED_UNCLOSED   Part-0 override present; launch, but the session is
-                          honestly labelled "G-1 NOT closed (dev-mode)"
+    0  PROCEED_UNCLOSED   uncaged default (no --override-ack): legitimate
+                          operator-trust posture, launch OK, neutral label
+    1  REFUSE             boundary NOT closed; DO NOT launch. Includes a
+                          `--mode caged` request that did not reach CLOSED.
+    2  PROCEED_UNCLOSED   Part-0 override present (--override-ack); launch, but
+                          the session is honestly labelled "G-1 NOT closed
+                          (dev-mode)"
+
+Posture selector (`--mode`, default `uncaged`):
+
+    uncaged  legitimate operator-trust default; launch OK (exit 0) with a
+             neutral label. The DEFAULT posture per `operating-posture.md`.
+    caged    REQUIRE a CLOSED boundary; a caged request that is not CLOSED
+             REFUSES (exit 1). The mode can NEVER manufacture CLOSED.
 """
 
 from __future__ import annotations
@@ -26,7 +37,7 @@ from pathlib import Path
 
 from . import bridge_recovery
 from . import config_scan
-from .boundary import Verdict, run_preflight
+from .boundary import RequestedMode, Verdict, run_preflight
 
 
 def _repo_root() -> Path:
@@ -60,6 +71,17 @@ def build_parser() -> argparse.ArgumentParser:
             "Part-0 operator-acknowledged dev-mode override: escalates a "
             "NOT-closed boundary to PROCEED_UNCLOSED with an honest label; "
             "can NEVER produce CLOSED"
+        ),
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["uncaged", "caged"],
+        default="uncaged",
+        help=(
+            "intended posture (D1). 'uncaged' (default): legitimate operator-trust "
+            "posture, launch OK, neutral label. 'caged': REQUIRE a CLOSED boundary "
+            "-- a caged request that is not CLOSED REFUSES (no false assurance). "
+            "The mode can never manufacture CLOSED."
         ),
     )
     return parser
@@ -106,11 +128,13 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.config_root) if args.config_root else _repo_root() / ".gleipnir"
     )
 
+    requested_mode = RequestedMode(args.mode)
     decision = run_preflight(
         config_root,
         args.agent_uid,
         args.agent_gid,
         override_ack=args.override_ack,
+        requested_mode=requested_mode,
     )
 
     print(
@@ -123,8 +147,13 @@ def main(argv: list[str] | None = None) -> int:
     if decision.verdict is Verdict.CLOSED:
         return 0
     if decision.verdict is Verdict.PROCEED_UNCLOSED:
-        return 2
-    return 1
+        # Distinguish the legitimate uncaged default (non-failing, exit 0) from
+        # the operator-acknowledged override (exit 2). A CAGED request never
+        # reaches this branch as a "pass": caged-not-closed is REFUSE below.
+        if requested_mode is RequestedMode.UNCAGED and not args.override_ack:
+            return 0            # uncaged default: legitimate launch-OK posture
+        return 2                # --override-ack: honest dev-mode escalation
+    return 1                    # REFUSE (incl. caged-requested-but-not-closed)
 
 
 if __name__ == "__main__":

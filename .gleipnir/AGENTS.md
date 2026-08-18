@@ -63,13 +63,21 @@ cost-per-outcome ledger (G-4d) is the scoreboard.
 
 ## Trust tiers (spec G-6)
 
+> **Default posture is UNCAGED (see `decisions/operating-posture.md`).** The
+> "Writer" column below — specifically the Tier-3 "operator only (G-1)"
+> invariant — describes the **opt-in CAGED mode**, NOT the default. Under the
+> default uncaged posture (trusted single-principal terminal) an agent acting
+> under operator instruction MAY write Tier-3. The Tier-3-unwritable invariant,
+> and terminal closure of the S-2 boundary, hold WITHIN an opt-in caged
+> commitment. The `keys/` mode-600 floor is retained in BOTH modes.
+
 `.gleipnir/` is four trust tiers; authority decreases as writability increases,
 and nothing lower may alter anything higher (see
 `decisions/gleipnir-layout-and-memory-model.md`):
 
 | Tier | Name | Paths | Writer |
 |---|---|---|---|
-| 3 | POLICY | `agents/ skills/ goals/ decisions/ stage-role-map.md keys/` | operator only (G-1) |
+| 3 | POLICY | `agents/ skills/ goals/ decisions/ stage-role-map.md keys/` | operator only in caged mode (G-1); operator-or-instructed-agent in the uncaged default |
 | 2 | USER_REVIEWED | `memory/ lessons/` | review-gated pipeline |
 | 1 | RETRIEVED | `logs/` | framework processes (bus/observer) |
 | 0 | TEMPORARY | `plans/ var/tmp/` | bounded agents; disposable |
@@ -119,7 +127,7 @@ enforcement.
 
 | Guard | What step 0 provides | Not yet real (later step) |
 |---|---|---|
-| G-1 (unreachable guards) | Agents deny edits under `.gleipnir/` | S-2 substrate boundary; terminal closure + S-3 preflight |
+| G-1 (unreachable guards) | Terminal closure + Tier-3-unwritable are the **opt-in CAGED** posture (`decisions/operating-posture.md`); the uncaged default trusts the single-principal operator. The `--mode caged` selector + S-2 OS acts engage the cage on demand | Full S-2 substrate boundary + S-3 preflight as the *caged-mode* wall (default stays uncaged by design, not by incompleteness) |
 | G-2 (capability removal) | `bash: deny` + allowlist; git isolated to `git-ops`; **S-2 sandbox built** — `gleipnir-code` build/test runs in an ephemeral container (`bin/gleipnir-sandbox`, `--network=none`, ro source), not the host (T-6 blast radius real) | Broker as separate process/IPC; **E-1 argument policy**; credential isolation; ro-mount of `.gleipnir/` |
 | G-3 (unforgeable evidence) | **G-3.1 built**: keyed HMAC marker (`src/gleipnir/verify/`), tests green; orchestrator instructed not to self-declare done | G-3.1 key *boundary-enforcement* (needs S-2 mount + S-3 preflight); G-3.2 engine attestation binding (needs G-5) |
 | G-4 (unblindable senses) | — | Typed event bus, ledger, observer, novelty triage |
