@@ -7,313 +7,80 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
-All six enforcement guards (G-1..G-6) have real, tested first slices, plus a
-language-agnostic sandbox executor (node profile + broker profile live),
-two broker MCP servers (gleipnir-git / gleipnir-pm with single-holder scoping),
-the tier3-coach skill for control-gap proposals, the session-scribe bookkeeping
-role with Tier-0→Tier-2 lesson-escalation process (A-hybrid; live-verified end-to-end),
-config-scoping preflight (config_scan.py; 143 tests, full coverage, closes L-C12/L-C12b class),
-git-enforcement via layered plugin (config-scan gate) + broker (always-on secret-scan),
-lesson corrections/additions (L-C16→L-C17 glob-fix guidance, L-C18 verbatim-reproduction rule),
-glob-guidance + GOTCHA-inlining policy (Tier-3 edits applied; take effect next session),
-and the orchestrator interactive-session context-cap feature. This session diagnosed
-and fixed the root cause of a blocked/inaccessible pipeline session — a stale G-5 bridge
-file combined with a stale `ROLE_STATES` binding in `allow_table.py` that predated the
-`gleipnir-brainstorm`/`gleipnir-plan` role split (now fixed, commit `58dcbeea`, with an
-L-C20 parity-test guard against recurrence). Latest committed + pushed state is on `origin`
-(`git@github.com:Djarid/gleipnir.git`, branch `main`).
-Tests: **broker profile 51 passed; python self-host 669 passed / 12 skipped; node profile 29 passed**.
-All features verified live post-restart (git-ops sees 4 git tools, zero pm tools;
-push_current_branch functional in production; dogfood node test 16/16 pass in-container).
+**FOUNDATIONAL PARADIGM CHANGE THIS SESSION:** operating posture reversed to
+UNCAGED-by-default (commit 7b18bb1). Single-principal terminal operator is the
+trusted owning principal; agents under operator instruction MAY write Tier-3.
+Caged mode (fail-closed S-2 boundary + OS acts) is now OPT-IN, required only
+for unattended/autonomous, untrusted-content-ingestion, or higher-assurance
+contexts. G-3 key stays `mode 600` in BOTH modes (key-protected floor). Preflight
+now has `--mode {uncaged,caged}` selector; requested_mode NEVER participates in
+closure computation — safety invariant (traced + tested). Durable record:
+`decisions/operating-posture.md` (supersedes always-on-cage framing in
+`s2-g1-closure.md`, `substrate-design-pass.md`, `gleipnir-layout-and-memory-model.md`,
+`AGENTS.md`). Tests GREEN: 754 passed, 12 skipped.
+
+**Built + committed this session:** preflight mode selector + tests (commit 7b18bb1);
+enforcement-path set E extended to `.gitattributes` + `.gitmodules` + rationale
+(commit 10b7edc); S-2 caged-mode docs (commit 53be4c4).
+
+Working tree clean, HEAD at commit `53be4c4` on main (3 commits ahead of prior
+`origin/main`; NOT pushed). All hardened-path reviews PASSED (spec-conform +
+blast-radius + negative-check attestations; cognition-layer honour checks clean).
+Cognition layer PROVEN LIVE (two plans this session used Gate 1 + Gate 2; gates
+fired for real, caught 2 reconciliation defects on paradigm plan).
 
 ## Built slices (verified against disk / commits)
 
-- **G-1 unreachable-guards closure** — fail-closed boundary preflight
-  (`src/gleipnir/preflight/`, `bin/gleipnir-preflight`); commit `5cd329c` (+
-  `356eb05`). OS-perms floor; behavioural-probe, fail-closed; per-file walk.
-- **G-2 capability removal** — ephemeral sandbox (`--network=none`, ro source);
-  `src/gleipnir/sandbox/`, `Containerfile`.
-- **G-3.1 unforgeable marker** — keyed HMAC (`src/gleipnir/verify/`).
-- **G-4 unblindable senses** — typed event bus + G-4d metrics ledger
-  (`src/gleipnir/bus/`, `src/gleipnir/ledger/`); commits `2011737`, `7f4cc13`.
-- **G-5 deterministic engine** — engine + revert edges + global revert budget
-  (`src/gleipnir/engine/`); commit `3751163`.
-- **G-6 memory-not-poisonable** — trust-tiered `.gleipnir/` layout + write model
-  (`decisions/gleipnir-layout-and-memory-model.md`).
-- **Armed-run dogfood** — the G-5 loop composes end-to-end (Python side verified;
-  node cross-lang block committed but not-agent-run); commit `4ae2c36`.
-- **Language-agnostic sandbox** — config-driven toolchain dispatch; the Tier-3
-  arbiter (`.gleipnir/sandbox/profiles.toml`) is preflight-protected; commit
-  `91d1127`. Corrects the "Python-only" mislabeling — Gleipnir guards
-  multi-language targets.
-- **session-scribe** (this slice) — Tier-0-scoped bookkeeping writer + the
-  resume mechanism (this file). See `../decisions/session-scribe.md`.
-- **Lesson corrections/additions (commit 4135546, extended this session)** — L-C16 glob-bug
-   guidance corrected via L-C17 (the fix: `path` param, not "use read"); L-C18 added
-   (orchestrator must reproduce subagent Decision Analysis verbatim, not paraphrase); L-C19
-   (no in-framework recovery for stuck G-5 bridge; recovery-path design as required question);
-   L-C20 (derivation is only as current as its input; ROLE_STATES parity test guards drift).
-   File: `.gleipnir/lessons/session-lessons-candidates.md` (verified: L-C16–L-C20 present).
-- **`allow_table.py` ROLE_STATES fix** — commit `58dcbeea`. Split of `gleipnir-brainstorm`
-   and `gleipnir-plan` roles was live in stage-role-map.md but ROLE_STATES mapping was stale,
-   causing allow-table derivations to fail for brainstorm tasks. Fixed: added entry
-   `"gleipnir-brainstorm": frozenset({PipelineState.BRAINSTORM})`. L-C20 parity-test guard
-   added to `tests/test_allow_table.py:55` ensures every roster role has an entry.
-- **`bin/gleipnir-preflight` permission fix** — commit `9645974`. File was committed with
-   mode `100644` (non-executable), blocking the always-active `git-guard.ts` gate which shells
-   out to it before every broker git write; restored to `100755`. Regression guard: new test file.
-- **`test_bin_executable.py` regression guard** — commit `6283cba`. New test file verifies
-   every tracked `bin/*` file committed with executable bit (via `git ls-files -s`, not
-   working-tree probe, to catch config-hidden regressions). Skips cleanly in environments
-   without usable git tooling (e.g., `bin/gleipnir-sandbox test` in python:3.12-slim).
-   Plan: `.gleipnir/plans/bin-executable-bit-fix.md` (Phase 1 B, agent-buildable, now complete).
-- **Tier3-coach plans: bridge recovery + bin-executable 2-3 (APPLIED, this session)**
-  — Both spec-review APPROVED plans now APPLIED and committed in build mode:
-  - **Bridge recovery (L-C19)** — commit `1c91a19`. Adds `bridge-status` / `bridge-reset`
-    subcommands to `bin/gleipnir-preflight` to inspect/clear stale G-5 bridge file.
-    Implementation: `src/gleipnir/preflight/bridge_recovery.py` (bridge-status reads only,
-    classifies as healthy/stale/corrupt-or-tampered/absent; bridge-reset deletes bridge only,
-    requires `--confirm-clear` + `GLEIPNIR_OPERATOR_UID` opt-in, never re-mints state,
-    refusal guard if invoked by non-operator uid, appends to `.gleipnir/logs/bridge-recovery.log`).
-    Dispatch added to `src/gleipnir/preflight/__main__.py`. Companion permission-hardening:
-    `gleipnir-code.md` now contains `"src/gleipnir/preflight/**": deny` (recovery tool source
-    stays agent-unreachable). Decision record: `.gleipnir/decisions/bridge-recovery-path.md`.
-    Tests: 669 passed / 12 skipped (test_bridge_recovery.py, 90% coverage on the new module).
-  - **Git-guard diagnosability (bin-executable-bit-fix Phases 2–3)** — commit `42a4de5`.
-    Phase 1 (test) was committed earlier; Phases 2–3 (implementation + decision record) now applied.
-    `.gleipnir/plugins/git-guard.ts` now distinguishes a broken/missing preflight tool
-    (`PreflightUnavailable`, still fail-closed) from a config-scan REFUSE, so a future
-    occurrence is one-line "chmod this" fix rather than multi-step investigation.
-    Decision record: `.gleipnir/decisions/bin-executable-bit.md`. Node tests 15 pass / 0 fail.
-    Both commits spec-review APPROVED and quality APPROVED before commit.
-- **Glob-guidance + GOTCHA-inlining policy (commits eb5c893, 0b221a3)** — Two
-  converged+planned+spec-reviewed threads, applied to Tier-3: `.gleipnir/AGENTS.md`
-  gained `## Tooling notes` section (canonical glob/`path` rule); `.gleipnir/agents/session-scribe.md`
-  gained reference-only glob pointer bullet; `.gleipnir/skills/README.md` gained
-  `## Who loads GOTCHA` intentional-policy note. Plans: `glob-guidance-placement.md`,
-  `roster-gotcha-loading.md`. **RESTART-GATED**: take effect next session.
-- **jsonc agent-block: crash-fix then GRAMMAR finding (commits 981623b, 98ec0c5, 9837d6d)**
-  — First made `config_scan_main` crash-safe on non-dict `agent:` block (residual
-  fast-follow, +7 tests). Then added `check_jsonc_agent_grammar` helper emitting
-  GRAMMAR/FAIL finding (+13 tests; emit-before-coerce ordering; 91% coverage).
-  File: `src/gleipnir/preflight/config_scan.py`, `tests/test_config_scan_grammar.py`,
-  `tests/test_config_scan_cli.py`. Durable decisions in plans: `jsonc-agent-grammar-finding.md`.
-  **CLOSES**: config_scan hook/CI wiring precursor (now superseded by Approach C);
-  residual jsonc fast-follow. **CLOSES**: config_scan not auto-wired note
-  (now wired via git-guard plugin, once it takes effect next session).
-- **Git-enforcement via layered plugin + broker (Approach C) — commits 9cf8c96, 73f754b**
-  — Operator-redirected away from git pre-commit hook/CI (principle: no non-Tier-3
-  outbreak controls) toward opencode-plugin + broker split. Approach C: config-scan
-  in plugin, secret-scan in broker; D9 compliance: ALWAYS-ACTIVE plugin, exit-2
-  escape valve. Delivered:
-  - `src/gleipnir/broker/git/mcp_server.py`: `commit_changes` now runs ALWAYS-ON
-    secret-scan (guards.precommit_check) POST-STAGE/PRE-COMMIT, reset HEAD on finding.
-    +7 broker tests (`test_broker_git_commit_guard.py`). Also fixed 3 false doc-claim
-    strings (module docstring, commit_changes docstring, FastMCP instructions).
-  - `.gleipnir/plugins/git-guard.ts` (Tier-3, NEW): opencode plugin on `gleipnir-git_*`
-    tools; shells out to `bin/gleipnir-preflight config-scan`; exit 0/1/2 semantics
-    (0=allow, 1=abort, 2=warn-proceed, other=fail-closed). +13 plugin tests
-    (`test_git_guard.mjs`).
-  - `Containerfile.broker`: added `git` binary (broker image lacked it; unblocked tests).
-    Rebuilt; digest re-pinned in `.gleipnir/sandbox/profiles.toml`.
-  - `.gleipnir/decisions/broker-mcp.md`: fixed SECURITY-HONESTY DRIFT (D2) — it falsely
-    claimed `commit_changes` ran precommit_check when code ran plain `git commit`;
-    now accurate + honesty note that this was aspirational-until-this-change.
-  - **Verification**: broker profile 51 passed/0 failed; python 639/11; node 29 passed.
-    No regressions. Plans: `git-enforcement-plugin.md` (spec-review approved).
-  - **RESTART-GATED**: plugin takes effect next session.
-- **Orchestrator interactive-session context-cap** — Tue 28 Jul 2026.
-   Orchestrator runs on capped model `aperture-anthropic/anthropic.claude-opus-4-8-capped`
-   (limit.context 250000 / output 32000, declared in `opencode.jsonc`);
-   `gleipnir-plan` and `gleipnir-brainstorm` remain uncapped (scope verified, no leak).
-   Single source of truth: `.gleipnir/policy/context-cap.jsonc` (cap_tokens 250000).
-   At-cap compaction rules: `.gleipnir/plugins/compaction-survival.ts` (ported from AETOS).
-   Durable record: `.gleipnir/decisions/context-cap.md` (policy enforced-at-hook, not yet G-1 closed).
-   Operator restart-verified: Stress-test S1/S2 passed; 250000 window confirmed.
-   **Observed seam:** gleipnir-code enforces grant denies ALL `.gleipnir/**` writes
-   (no Tier-0 `var/tmp` carve-out), vs AGENTS.md narrating `var/tmp` as agent-writable —
-   candidate lesson on doc-vs-grant discrepancy.
-- **Node profile real-run (language-agnostic sandbox, this session)** — CLOSED.
-   `Containerfile.node` (FROM node:22-slim, digest-pinned) built to
-   `localhost/gleipnir-sandbox-node`. Live profile `[profile.node]` in
-   `.gleipnir/sandbox/profiles.toml`, digest-pinned. `tests/test_sequence_gate.mjs`
-   **16 passed, exit 0** under `--network=none` in-container, INCLUDING the dogfood
-   block (Python↔JS HMAC contract verified byte-for-byte). No regression: python
-   self-host green. Decision record: `.gleipnir/decisions/language-agnostic-sandbox.md`.
-- **Broker MCP servers: gleipnir-git + gleipnir-pm** — Completed this session.
-    Two pointy stdio MCP servers, 4 tools each (git: `git_status`, `git_diff`,
-    `commit_changes`, `push_current_branch`; pm: `issue_create`, `issue_update`,
-    `issue_comment`, `issue_close`). Each independently versioned (0.1.0) in
-    `src/gleipnir/broker/{git,pm}/` with own `pyproject.toml` + bounded `mcp>=1.0,<2`.
-    **E-1 argument-policy half CLOSED structurally:** force-push absent from tool
-    surface (no code path exists); `_run_git` refuses hook-bypass flags
-    (`--no-verify`/`-n`/`-c core.hooksPath`), so agents cannot bypass operator git
-    hooks. Credential-unreachability half still open (S-2 boundary). Single-holder
-    scoping via TOP-LEVEL `tools:` frontmatter key with BOOLEAN values (`false`=deny),
-    verified live post-restart: git-ops sees 4 git tools + ZERO pm tools;
-    push_current_branch deployed to production (3 commits pushed). Guard policy
-    (secret-scan/branch-protection/data-file) NOT enforced by broker; belongs in git
-    hooks (see `.gleipnir/plans/precommit-hook-control-proposal.md`, proposal not yet
-    operator-applied). Broker sandbox: `Containerfile.broker` + `[profile.broker]`
-    isolate MCP SDK transitive tree; default_profile stays python; `conftest.py`
-    skip-gates mcp-dependent test where mcp is absent. Tests: broker profile **43
-    passed**; python self-host **476 passed / 11 skipped**. Decision record:
-    `.gleipnir/decisions/broker-mcp.md`. Plan: `.gleipnir/plans/broker-mcp.md`
-    (spec-review approved, 2 rounds). Commits: ad32280 (features), a bool-fix commit,
-    c8050da (scoping fix) — all pushed to origin/main.
-- **`## Session resume` section added to `.gleipnir/AGENTS.md`** — Operator-applied in
-    build mode this session (commits applied; to take effect next session). Closes the
-    gap where a fresh session had no automatic pointer to the resume entry point. The
-    new section (lines 151–178) instructs orchestrator to read `.gleipnir/plans/SESSION-STATE.md`
-    at session start (conditionally, degrades gracefully if absent/fresh-clone), marks
-    the file as a pointer/non-authoritative, and explicitly tells bounded subagents
-    to skip it (with session-scribe documented as the exception, since it owns and churns
-    the file). Plan: `.gleipnir/plans/session-state-startup-instruction.md` (spec-review
-    APPROVED, 2 rounds). **RESTART-GATED** — takes effect on the very next session.
-- **Tier3-coach skill (originated gleipnir; not AETOS-inherited)** — Added to
-   `.gleipnir/skills/tier3-coach/SKILL.md`. Loaded by gleipnir-brainstorm when
-   an enforcement-control gap in an agent-unreachable layer is found.
-   Detect→Locate→Propose→Converge→Handoff workflow; never implements. See
-   `.gleipnir/skills/tier3-coach/SKILL.md` for full methodology.
-- **Pre-commit hook enforcement (git-ops guard policy)** — APPLIED and verified
-   this session. Git hooks installed (`hooks/pre-commit`, activated via
-   `core.hooksPath=hooks`). Runtime verification: secret-scan REFUSED untrusted
-   content; clean commit PASSED; strict branch-protection (no explicit push to
-   main) enforced; operator `--no-verify` bypass works; agent cannot bypass
-   (flag-injection defended + message-text false-positive fixed, commit `abc7def`).
-   Scope: local/opt-in/per-clone, verified no auto-install, no CI enforcement.
-   See `.gleipnir/decisions/broker-mcp.md` and updated
-   `.gleipnir/plans/precommit-hook-control-proposal.md` (team-impact note).
-- **git-ops step budget raised 15→30** — During hunk-split commit (`git add -p`),
-   a 15-step cap exhaustion destroyed 12 tracked files' uncommitted edits
-   mid-task (blast-radius incident). Budget raised to 30 post-recovery;
-   reversion testing green. Lesson L-C11 graduated.
-   Commits: merged into main, pushed.
-- **Tier-0→Tier-2 lesson-escalation process (A-hybrid)** — Thu 30 Jul 2026. FULLY LANDED.
-   Extends session-scribe's write grant to `.gleipnir/lessons/session-lessons-candidates.md`
-   (single named file, not blanket lessons/) as interim substitute for not-yet-built G-4c
-   review-gated pipeline. Human review satisfied upstream: orchestrator confirms drafted
-   lesson text via `question` (2-round cap) before delegating append to session-scribe.
-   Full pipeline: brainstorm (alternatives A/A-hybrid/B/C + weighted decision matrix + bias
-   check) → plan (ATLAS Architect/Trace) → spec-review (caught defect: plan claimed
-   compaction-durability not in edit; fixed and re-reviewed) → approved. Live end-to-end
-   verified: L-C14 appended through new process using session-scribe's grant with
-   orchestrator UNCONSTRAINED by build mode. Orchestrator body section ("Lesson-candidate
-   escalation (A-hybrid; standing discipline)") + compaction_survival frontmatter bullet
-   (durability) now in `.gleipnir/agents/orchestrator.md`. 8-step process documented:
-    notice→draft, coalesce-within-one-turn (never pending), present verbatim, confirm,
-    provenance stamp, delegate, verify, report. Superseded earlier tier2-escalation-control-proposal.md
-    sketch (mechanism decision Option A remains valid). Commits: d72eec3 (mechanism) +
-    0b3b0f7 (bundled with config-scan plan). Durable decision record:
-    `.gleipnir/decisions/lesson-escalation.md`; Tier-0 plan docs:
-    `.gleipnir/plans/lesson-escalation-process.md`, `.gleipnir/plans/lesson-escalation-process-brainstorm.md`,
-    `.gleipnir/plans/tier2-escalation-control-proposal.md`.
-- **Config-scoping preflight (config_scan.py) — FULLY IMPLEMENTED.** Thu 30 Jul 2026.
-   Closes L-C12/L-C12b class (restart-only-observable config bugs) by validating agent/config
-   CONTENT (YAML grammar, effective per-agent MCP tool-grant sets) vs OS write/read perms alone.
-   ATLAS plan `.gleipnir/plans/config-scoping-preflight.md` (8 findings fixed, 2 spec-review
-   rounds) + dedicated design-coherence pass (caught argument-order mismatch: tests declared
-   authoritative). Test-first: 6 files, 143 tests (full API specification + incremental build).
-    Implementation: `src/gleipnir/preflight/config_scan.py` (new), wired as `config-scan`
-    subcommand into `src/gleipnir/preflight/__main__.py` (leading-token dispatch, zero behaviour
-    change to boundary check). Two real defects fixed: (a) cross-file glob inconsistency violated
-    Design Consolidation Decision 2; (b) malformed-but-grammar-legal tools:/permission non-dict
-    value crashed uncaught — fixed at primary checkpoint (check_grammar) + defense-in-depth
-    guards with 15 regression tests. Final: 143 tests, 90% line+branch coverage, 619 passed /
-    11 skipped, zero regressions, quality-APPROVED. NOT yet wired to run automatically (git hook,
-    CI) — deferred, needs convergence. Residual fast-follow (non-blocking): config_scan_main
-    jsonc "agent" block assumes dict; malformed opencode.jsonc could raise. Commits: 0b3b0f7
-    (plan+tests) + c3c93ea (implementation). Durable decision record:
-    `.gleipnir/decisions/config-scoping-preflight.md`; Tier-0 plan:
-    `.gleipnir/plans/config-scoping-preflight.md`.
+**Stable foundation (multi-session, durable home in `../decisions/`):**
+- **G-1 unreachable guards** (preflight; fail-closed; per-file walk); **G-2 capability removal** (sandbox `--network=none`); **G-3.1 unforgeable marker** (keyed HMAC); **G-4 unblindable senses** (typed bus + metrics ledger); **G-5 deterministic engine** (revert edges + budget); **G-6 memory-not-poisonable** (trust-tiered layout). All verified end-to-end dogfood (armed-run; cross-lang HMAC contract).
+- **Language-agnostic sandbox** (config-driven toolchain dispatch via `.gleipnir/sandbox/profiles.toml`); Tier-3 preflight-protected.
+- **Session-scribe** (Tier-0 bookkeeping writer; resume mechanism; this file).
+- **Tier3-coach skill** (control-gap detect→propose→converge workflow; operator-handoff, never implements).
+- **Lesson-escalation process (A-hybrid)** (brainstorm → plan → spec-review → approved → orchestrator confirms verbatim via `question` → session-scribe appends; live end-to-end verified; operator UNCONSTRAINED by build mode).
+- **Config-scoping preflight (config_scan.py)** (143 tests, 90% coverage; closes L-C12/L-C12b class; validates content/grammar/tool-grant sets; ALWAYS-ACTIVE plugin gate + broker secret-scan).
+- **Broker MCP servers** (gleipnir-git + gleipnir-pm; 4 tools each; single-holder scoping via Tier-3 frontmatter; git 99%, pm/mcp 97%, pm/platform 100% coverage; force-push structurally absent; hook-bypass flags refused).
+- **Git-enforcement (Approach C)** (plugin: config-scan on every git write; broker: secret-scan always-on pre-commit; layer split closes D9 compliance).
+- **Orchestrator context-cap** (Opus capped 250k / 32k output; compaction rules ported from AETOS; policy enforced at hook).
+- **Lessons L-C1–L-C26** (graduated through L-C10; L-C11–L-C26 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing).
+
+**Recent — PARADIGM REVERSAL + related work (THIS SESSION):**
+- **Operating posture — UNCAGED by default, OPT-IN caged (commit 7b18bb1)** — Durable decision: `decisions/operating-posture.md`. The framework's security boundary default REVERSED: single-principal operator is the trusted principal; agents under instruction MAY write Tier-3 (agents/, keys/, stage-role-map.md, decisions/, goals/). This is a LEGITIMATE default, not a deficiency. Caged mode (S-2 boundary + OS acts) is OPT-IN, required ONLY for (i) unattended/autonomous, (ii) untrusted-content ingestion, (iii) higher-assurance. G-3 key stays `mode 600` in BOTH modes (key-protected floor; uncaged is NOT all-or-nothing). **Mechanism (tested):** preflight has `RequestedMode {uncaged,caged}` + `--mode` CLI selector (`src/gleipnir/preflight/boundary.py`). Safety invariant: `requested_mode` NEVER participates in closure computation — uncaged can be legitimately unclosed; caged requested-but-unclosed REFUSES (exit 1). **IMPORTANT:** orchestrator applied Tier-3 edits this session under operator instruction (via escape hatch); this is now expected/legitimate, proving tier protection was dormant before. Tests: 754 passed, 12 skipped; new `tests/test_preflight_mode_selector.py`; 23 pre-existing tests updated for caged-request fail-closed guarantee. Hardened-path review: SPEC-CONFORM PASS (2 reconciliations removed foreclosed temporary-grant path) + BLAST-RADIUS PASS + negative-check attestation (attested_by=quality-reviewer ≠ author); cognition-layer honour check: no divergence.
+- **Enforcement-path set E extended (commit 10b7edc)** — Added `.gitattributes` + `.gitmodules` to Axis 2(a) enforcement-path literals (same blast-radius class as `.gitignore`). Per-file rationale: `.gitattributes` controls git behaviour (line-ending, filter/clean/smudge drivers, diff/merge selection, export-ignore, binary treatment — a silent change alters stored content); `.gitmodules` declares submodule URLs/paths (URL change = supply-chain / version-control-integrity surface). Explicit enumeration per opencode.jsonc precedent (not fuzzy predicate). Lock-files remain the sole deferred member of same-class gap (Approach B: open-ended basename list, nested subproject appearance breaks repo-root-only invariant — deferred explicit). Hardened-path review PASSED.
+- **Cognition layer — PROVEN LIVE (TWO PLANS RAN GATE 1 + GATE 2 THIS SESSION)** — Not a new guard; fills the ATLAS/GOTCHA-from-prose-only gap. Two plans ran full cognition cycle (override-paradigm + enforcement-path-gap-closure); both submitted Design Principles section (Gate 1, case-routed by Axis-1 `X`); both passed spec-review intent-quality check + quality honour check (Gate 2 distinct checks). Gate 2 CAUGHT 2 reconciliation defects on paradigm plan (anti-vacuity rule + stale temporaries); gates fired for real. Validated as structurally live, not just documented. Marked DONE/VALIDATED in open threads (below).
+- **S-2 caged-mode supporting docs (commit 53be4c4)** — Three new Tier-0 planning artifacts: `s2-activation-launch-habit.md` (C1 dev-mode status quo), `s2-activation-control-proposal.md` (C2 ready-to-apply operator-only OS acts), `caged-mode-runbook-brainstorm.md` (converged design brief for runbook + go-caged skill). Next step: gleipnir-plan drafts the runbook + skill (Tier-3 decisions/ + skills/) from the brief.
 
 ## Open threads / next
 
-**Wed 12 Aug 2026 (continued) — Prose/config-only track + broker test coverage:**
-- **Prose/config-only pipeline track — APPLIED + VERIFIED this session (build mode).** Converged on Approach B (brainstorm file `.gleipnir/plans/prose-config-only-track-brainstorm.md`). Plan `.gleipnir/plans/prose-config-only-track.md` (571 lines) spec-review APPROVED WITH NOTES (final, three rounds). Amendment now APPLIED to `.gleipnir/stage-role-map.md`: file grew from 61 to 167 lines; new "Prose/config-only track" section at line 63; byte-for-byte match to reviewed plan block confirmed. Purely additive — no existing lines altered. **Three non-blocking notes for FUTURE tightening pass** (not this plan's scope, remain open): (a) correspondence gate's "where applicable" same-file hedge is underdefined; (b) check pattern/target but not explicitly post-change artifact state; (c) fresh same-class non-blocking gap: repo-root `.gitignore` (governs key/digest git-tracking) also unenumerated by both axes, alongside noted `.envrc`/`pyproject.toml`. **Status: CLOSED — APPLIED + VERIFIED.**
-- **Broker git MCP server coverage gap — COMPLETE + MEASURED this session.** Test file `tests/test_broker_git_mcp_server.py` (~612 lines) per spec-reviewed plan `.gleipnir/plans/broker-git-coverage-gap.md` (verdict: APPROVED WITH NOTES). Both operator actions completed: (a) `.gleipnir/sandbox/profiles.toml` line 60 now includes `tests/test_broker_git_mcp_server.py` (6 files in broker profile); (b) broker profile run in pinned sandbox image measured coverage. **RESULT: 78 passed / 0 failed; `src/gleipnir/broker/git/mcp_server.py` coverage rose from 52% to 99% (124 stmts / 1 missed / 58 branch / 1 partial).** Only miss is line 417 (`if __name__=="__main__"` entry guard, unreachable under pytest). Comfortably clears ≥85% target. New test file added 27 tests, all green; no regression in other 5 broker test files. **NOTE:** aggregate broker TOTAL was 77% after this work because SEPARATE `pm/mcp_server.py` was at 25% — the pre-existing "pm broker coverage" follow-up item, distinct from the git-server gap (now closed 52%→99%). **SEE NEXT ITEM: pm-broker gap is now COMPLETE.**
-- **Broker pm MCP server coverage gap — COMPLETE + MEASURED this session.** Follow-on to the git-server coverage work (the pre-existing "pm broker coverage" follow-up, now closed). Test file `tests/test_broker_pm_mcp_server.py` (16 tests) per spec-reviewed plan `.gleipnir/plans/broker-pm-coverage-gap.md` (verdict: APPROVED WITH NOTES; 3 doc-precision nits folded in). Covers the previously-untested pm wrapper layer: `_detect_remote` (subprocess-error / non-zero-returncode / success arms), `_remote_or_error` (both arms), and the four `issue_*` tool wrappers including `issue_update`'s conditional field-building. Both wiring edits applied (build mode): `.gleipnir/sandbox/profiles.toml` broker test list (now 7 files) + `tests/conftest.py` collect_ignore (now 4 entries). **RESULT: 94 passed / 0 failed; `src/gleipnir/broker/pm/mcp_server.py` coverage rose from 25% to 97% (57 stmts / 1 missed / 18 branch / 1 partial).** Sole miss is line 148 (`if __name__=="__main__"` guard). Clears ≥85% target. No regressions. Aggregate broker TOTAL now 86% (up from 77%); remaining low spot is the SEPARATE `pm/platform.py` at 60% — a distinct, still-open follow-up, not part of this gap. Committed `c2654d3` (not yet pushed at time of this note).
-- **Broker pm platform.py coverage gap + GHE auth bug fix — COMPLETE this session.** Started as a pure coverage task (`platform.py` was at 60%) but spec-review found a REAL production bug: `_http_request` selected the auth header via `if "github" in url:` (case-sensitive URL substring) instead of by `remote.platform`, so a GitHub Enterprise host with a custom domain lacking the literal "github" substring (e.g. `git.mycorp.com`) — correctly detected as platform=="github" and routed to the `/api/v3` GHE base everywhere else — would get the WRONG auth header (PRIVATE-TOKEN instead of Bearer), breaking GHE-custom-domain auth. Operator converged (via `question`) on FIX-AND-COVER. **The fix:** added a required keyword-only `platform: str` param to `_http_request`, header now keys off `platform == "github"` → Bearer else PRIVATE-TOKEN; all 4 issue_* call sites pass `platform=remote.platform`. Plan `.gleipnir/plans/broker-pm-platform-coverage.md` (2 spec-review rounds: R1 CHANGES REQUESTED surfaced the bug, R2 APPROVED WITH NOTES on the fix design; post-implementation quality review APPROVED, no findings). Extended existing `tests/test_broker_pm_platform.py` (no new file, no profiles.toml/conftest change — already collected). **RESULT: 699 passed / 12 skipped; `src/gleipnir/broker/pm/platform.py` now 100% line + 100% branch (128 stmts/0 miss, 46 branch/0 partial).** GHE fix proven two ways (direct-seam + full-path with urllib mocked, asserting corrected Bearer behavior). Exactly two files changed (platform.py + its test); no scope creep, no weakened tests. Commit pending. **This closes the last of the broker coverage follow-ups** — git/mcp_server 99%, pm/mcp_server 97%, pm/platform 100%.
-- **L-C23 recorded (this round).** Lesson candidate appended: "A long Decision Analysis embedded inside the `question` tool's field makes the options inaccessible; print it as response text first, then ask a short question." Fix: print analysis verbatim as response text first, then call `question` with SHORT prompt ("Given the analysis above, which option do you converge on?"). This satisfies L-C18 (verbatim reproduction, via "immediately precede" clause) while keeping question UI usable. Dated 2026-08-12, same provenance pattern as L-C19–L-C22 (operator-confirmed via question, interim gate).
-- **S-2 activation — ATLAS plan APPROVED, C2 control proposal drafted, awaiting operator application of OS acts.** S-2 is the biggest remaining item: turning enforcement from cooperative-policy into a structural OS boundary. Brainstorm brief `.gleipnir/plans/s2-activation-brainstorm.md` (~502 lines), operator-converged on **Approach C (staged hybrid), landing on the Approach-A uid-floor**. ATLAS plan `.gleipnir/plans/s2-activation.md` (461 lines) **APPROVED after hardened-path spec-review** (2 rounds: R1 CHANGES REQUESTED on 3 blast-radius defects — missing `sudo` on the acceptance test, a circular C1→C2 ordering rationale, and incomplete dir-hardening for `agents/`/`keys/` — R2 APPROVED with negative-check attestation confirming no LOCKED enforcement path is in the write-grant loop and the key ends RO_AND_UNREADABLE). **KEY FINDING: C1 is NOT new code** — the dev-mode path (`--override-ack` → PROCEED_UNCLOSED, DEV_MODE_LABEL, full per-session reasons dump) already exists in `bin/gleipnir-preflight`/`boundary.py` (verified source lines cited in plan). The only agent-buildable artifact is the Tier-0 launch-habit doc; everything with teeth (the C2 OS acts) is operator-only. **C2 acts are operator-only and NOT yet applied** — they form a ready-to-apply tier3-coach control proposal inside the plan: create dedicated agent uid (dscl/sysadminctl), chmod the 8 LOCKED ENFORCEMENT_PATHS OS-ro to the agent uid, place the G-3 key mode-600 RO_AND_UNREADABLE, install the sudo-invoked launch-as-agent-uid wrapper, set ownership/group layout. macOS-specific: dropping to a different uid requires the launcher to be root (sudo). **C1→C2 flip gate (D-G):** N≥5 clean advisory-mode sessions (empty reasons list) after OS acts applied, THEN flip to hard fail-closed. DEV_MODE_LABEL keeps un-closed status visible every launch. **Status: plan APPROVED, awaiting operator application of the C2 OS acts.** No roster agent can perform them. Everything downstream (Tier-2 memory pipeline, G-4d real cost, keys/ digests + S-3) stays gated until the floor holds. Commit pending.rator can apply. Several deferred items (Tier-2 memory pipeline, G-4d cost ledger, digest verification) are all "gated on S-2" and unblock once the floor holds.
-- **`bin/gleipnir-sandbox lint` read-only-mount bug — FIXED this session.** `python -m compileall` wrote `.pyc` into `src/**/__pycache__/` which failed on the read-only `/work` mount (`OSError: Read-only file system`) for every file. Fix (D1): `_cmd_lint` now passes `extra_env=[("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache")]` into `prepare_sandbox_run`, redirecting bytecode output into the existing rw scratch mount; keeps the real byte-compile check, writes nothing under the ro mount. Fixes both python and broker compileall profiles via the profile-agnostic `_cmd_lint` (no Tier-3 profiles.toml change — D2); inert for the node `--check` profile. Verified live: lint now runs clean (exit 0, no OSErrors). Plan `.gleipnir/plans/sandbox-lint-fix.md` (spec-review APPROVED WITH NOTES, 3 D4/blast-radius notes folded in). Tests: `tests/test_sandbox_cli.py` +3 (python-profile redirect assertion, broker-profile redirect assertion, exit-code-propagation regression guard); full sandbox suite 701 passed / 12 skipped. **The suspected "Bug 2" (lint false-green: exit 0 despite errors) was found NOT to exist** — it was a `| tail` measurement artifact in the orchestrator's own diagnostic; compileall + lint propagate exit codes correctly (see corrected D4 in the plan; L-C25). **Two lesson candidates recorded this round:** L-C24 (empty subagent return hid an orphaned broken fixture left in the live src/ tree — verify against disk; a blast-radius cleanup condition must be verified not trusted) and L-C25 (a bug report can be a measurement artifact — reproduce the raw signal before planning a fix). Commit pending.
-- **Prose/config-only track — 3 tightening notes APPLIED this session (hardened-path dogfood).** The three non-blocking round-3 review notes on the track are now folded into `.gleipnir/stage-role-map.md` (grew 167→201 lines): (1) removed the correspondence rule's underdefined "where applicable" hedge — same-file matching is now ALWAYS required, and summary criterion (iv) reconciled to match the detail rule; (2) added a "Post-change-state rule" requiring attestation evidence be captured against the applied/post-change file state (all 4 evidence forms), with new summary criterion (v); (3) enumerated `.gitignore`, `.envrc`, `pyproject.toml` into the enforcement-path set `E` (explicit enumeration, the opencode.jsonc precedent, not a fuzzy predicate) — each always-hardened by exact-path match. Plan: `.gleipnir/plans/classifier-tightening.md`. **Notably: this plan was itself enforcement-bearing (it amends stage-role-map.md ∈ E), so it ran the track's OWN hardened path — a clean dogfood.** Hardened review: quality-reviewer ran TWO separate non-fusing rubrics (SPEC-CONFORM: PASS + BLAST-RADIUS: PASS) plus a negative-check attestation; orchestrator (in build mode) applied the 4 edits by text-match and re-ran the post-apply negative-check attestation against the LIVE file (per the very post-change-state rule the plan installs): both rows PASS (E-set has the 3 exact literals, NO over-broad glob form; operative "where applicable" hedge absent). All 5 SUCCESS-gate clauses satisfied. Non-blocking future-round candidates named by review: `.gitattributes`/`.gitmodules`/lock-files are the same class, not yet enumerated (accepted per the explicit-enumeration tradeoff). Commit pending.
-- **G-4 next slice — terminal-events + ledger metrics — BUILT this session.** Brainstormed the next G-4 slice; operator converged on Candidate 1 (new engine-computed terminal/interoceptive event kinds + ledger metrics). During ATLAS planning, gleipnir-plan found the brief's premise was partly WRONG (verified in engine source): the engine has NO iteration/retry concept (FAIL routes backward = a revert, already emitted; escalation already captured by RevertOccurredEvent.escalated; only cap is the global revert budget). Operator was re-consulted (via `question`) and converged on the buildable-now substitute the planner found: two genuinely-new driver-observable terminal facts. DELIVERED: (1) two new EventKinds `NEEDS_HUMAN_RAISED` + `GATE_REACHED` with typed frozen payloads in `src/gleipnir/bus/events.py`; (2) driver emits them (`src/gleipnir/engine/driver.py`) via a SEPARATE `_emit_needs_human_if_any` sibling method + an `attempt_gate` wrapper — engine stays PURE (no bus import; AST invariant test green), write-bridge-before-emit + degrade-not-raise preserved; (3) two new honest `Measured` metrics `human_question_count` + `gate_reached_count` in the ledger (`reduce.py`), raw counts (denominator=1, empty log → Measured(0,1) not Gap); (4) reconcile.py updated with matching INDEPENDENT re-derivation (LOCKED g4d-ledger.md D4 consistency preserved). The ledger's `iterations`/`retries` seams stay honest Gaps but with CORRECTED reasons (the true blocker: engine has no iteration/retry concept — not the old misleading "no XEvent kind yet"). No redundant escalation metric added. Pipeline: brainstorm → plan → spec-review (APPROVED WITH NOTES) → code (test-first) → quality (APPROVED WITH NOTES). Tests: 732 passed / 12 skipped (+31 from the slice); coverage bus/events 95%, driver 98%, reduce 96%, reconcile 95%. **Known constraint (accepted):** these metrics are test-exercised only until Seam 7 (the live tool.execute.after advance hook) lands — this widens WHAT the senses measure, not whether emission lands live. **Tier-3 doc drift FIXED:** `g4-bus.md` line ~62 (said the driver emits nothing on NEEDS_HUMAN — now inaccurate) was amended in build mode to reflect the new sibling-method emit, history preserved. **Process note:** gleipnir-code returned EMPTY 3x this session on this slice (work landed on disk each time but no report) — verified against disk each time per L-C24; the ledger half was initially skipped (caught by disk-verify) then completed on re-delegation. Deferred (gated): token-provenance/cost/effort (need Seam 7 / S-2), novelty triage (needs signal history). Commit pending.
+**Stream 2 — caged-mode runbook + go-caged skill (CONVERGED, ready to PLAN then apply):**
+- **Brief:** `.gleipnir/plans/caged-mode-runbook-brainstorm.md` (operator-converged C1–C5). Converged decisions: (C1) runbook lives in Tier-3 `decisions/` home, agent drafts / operator authors — NOTE under new default-uncaged paradigm the orchestrator can also apply Tier-3 on operator instruction; (C2) NEW sibling skill `go-caged` (distinct from `tier3-coach`; executes a known lockdown on operator request vs. tier3-coach detecting gaps); (C3) trigger phrases anchored to the three operating-posture triggers (unattended, untrusted-content, higher-assurance); (C4) HYBRID inline rendering (--mode caged invocation, AC-4 test, rollback), reference the six S-2 C2 OS acts in `s2-activation-control-proposal.md`; (C5) minimal uncage (stop requesting caged; key floor never relaxed; full teardown separate). **NEXT:** gleipnir-plan plans this from the brief, drafts the runbook (Tier-3 `decisions/go-caged-runbook.md` or similar) + the skill (Tier-3 `skills/go-caged/`), orchestrator applies Tier-3 edits under operator instruction (now legitimate).
 
----
+**S-2 C2 operator acts (opt-in caged-mode activation, DEFERRED, operator-only):**
+- **Six OS acts in `s2-activation-control-proposal.md`** (ready-to-apply tier3-coach proposal): (i) create gleipniragent uid/gid 510; (ii) populate agent-identity.env; (iii) ownership/group layout + root sudo wrapper; (iv) chmod 8 LOCKED ENFORCEMENT_PATHS OS-ro to agent uid; (v) G-3 key `mode 600` owner-only (ALREADY DONE this session); (vi) preflight 100755. Ground truth verified: uid/gid 510 free, gleipniragent absent, key already 600, preflight already 100755. **AC-4 acceptance test:** `sudo --preserve-groups gleipniragent preflight` → CLOSED verdict, empty reasons, exit 0. Acts reframed by paradigm change from "the baseline requirement" to "the opt-in caged-mode procedure." Status: ready-to-apply, awaiting operator.
 
-**Wed 12 Aug 2026 — Post-bridge-recovery diagnosis session:**
-- Session found and fixed the root cause of a blocked/inaccessible pipeline session: stale G-5 bridge
-  + stale ROLE_STATES binding predating the brainstorm/plan split. **Root-cause commits:**
-  `58dcbeea` (allow_table.py fix), `9645974` (bin/gleipnir-preflight perm fix), `6283cba`
-  (test_bin_executable.py regression guard).
-- **L-C19 and L-C20 recorded in lessons file** — now formally captured as candidate lessons:
-   L-C19 (recovery-path as required design question for fail-closed gates); L-C20 (parity test
-   guards drift in "derived, not duplicated" projections). Both dated 2026-08-12. **L-C21 and
-   L-C22 also appended this session:** L-C21 (SESSION-STATE.md's "next" list can go stale
-   relative to Tier-3 disk state — verify the target artifact directly before treating a
-   carried-forward item as still open); L-C22 (the orchestrator should delegate a SESSION-STATE.md
-   update immediately after verified work, not wait for the operator to ask). Both dated 2026-08-12,
-   same provenance pattern as L-C19/L-C20 (operator-confirmed via question tool this session).
-- **Bridge-recovery Open Question #1 (RESOLVED, 2026-08-12)** — 1-hour freshness window on the
-   G-5 bridge. Operator converged (via orchestrator `question` tool) to keep it unchanged,
-   reasoning that the built recovery tooling (commit `1c91a19`) resolves L-C19 pain
-   (staleness is diagnosable/clearable, not a dead end), so a short window keeps the security
-   invariant tight without the earlier cost.
-- **`## Session resume` section in `.gleipnir/AGENTS.md` now live (RESTART-GATED)** — Applied to Tier-3;
-   takes effect on the very next session start. The next orchestrator session will be the first to
-   exercise the new auto-resume instruction (read SESSION-STATE.md conditional on real prior work).
-- **`## Decisions (index)` table in plan-format.md — VERIFIED COMPLETE this session.**
-   Disk re-verify found the table already present in `.gleipnir/goals/plan-format.md` (lines 13–22)
-   as Required Section #1, with exact column spec and L-C14 rationale cite. SESSION-STATE.md had
-   stale claim that this was "not yet done" — a discrepancy flagged as candidate lesson on verifying
-   "next" items against disk before treating them as still open.
-- **Stage-role-map precedence for prose/config-only plans — RESOLVED (see "Prose/config-only pipeline track — APPLIED + VERIFIED this session" above).** The question was flagged during the escalation-process plan brainstorm; converged and ratified as Approach B, spec-reviewed APPROVED, and applied to stage-role-map.md (lines 63–167).
-- **S-2 activation plan APPROVED; C2 control proposal drafted** — awaiting operator application of OS acts.
-- **RESTART-GATED changes — NOW CONFIRMED LIVE this session (not still pending):**
-   All four Tier-3 edits verified on-disk and active:
-   - `.gleipnir/AGENTS.md` `## Tooling notes` section (glob/`path` guidance) — present and live.
-   - `.gleipnir/agents/session-scribe.md` glob-pointer bullet (reference to Tooling-notes rule) — present and live.
-   - `.gleipnir/skills/README.md` `## Who loads GOTCHA` policy section (intentional per-role inlining) — present and live.
-   - `.gleipnir/plugins/git-guard.ts` git-guard plugin with ALWAYS-ACTIVE config-scan gate on `gleipnir-git_commit_changes` / `gleipnir-git_push_current_branch` — present and wired.
+**Stream 3 — retained open threads from prior sessions (keep current):**
+- **G-4 remainder:** Seam 7 (live `tool.execute.after` hook); Observer + novelty-triage; Token provenance / cost tracking.
+- **E-1 credential-unreachability:** Argument-policy half closed; credential half still open (brokers co-located with env-injected tokens; S-2 necessary-but-not-sufficient).
+- **E-2 platform-webhook receiver:** no component home yet.
+- **E-3 novelty-triage signal quality:** Seam 7 + observer will reveal.
+- **S-2 structural:** mount + terminal closure + S-3 wiring; Rust/C/C++ profiles + offline-deps decision; Option C (plugin-hosted bookkeeping); engine hybrid-C per-stage escalation.
+- **Prose/config-only track deferred:** lock-files (same class as `.gitattributes`/`.gitmodules`, deferred; nested subproject appearance + open-ended basenames).
 
-## Open seams (absorbed from the old session-seams-ledger.md; NOT authoritative)
+## Open seams (absorbed from old session-seams-ledger.md; NOT authoritative)
 
-- **S-2 activation (operator):** dedicated agent uid + chmod OS-ro + G-3 key
-   OS-unreadable + `bin/gleipnir-preflight` (code built, commit `5cd329c`).
-- **S-2 mount + terminal closure + S-3 preflight wiring:** the structural
-   boundary that makes `.gleipnir/` unwritable (vs today's preflight OS-perms
-   floor).
-- **E-1 credential-unreachability half:** brokers run as opencode stdio subprocesses,
-   not outside S-2; SSH/git-credential-helper and env-injected GITLAB_TOKEN/GITHUB_TOKEN
-   still co-located with session. Argument-policy half closed (no force-push path).
-- **E-2** platform-webhook receiver; **E-3** novelty-triage signal quality.
-- **G-4 remainder:** observer, novelty triage (G-4c), TS-side emit;
-   cost/economic-chain in the ledger (needs S-2 rate-table + token provenance).
-- **Engine hybrid-C per-stage escalation:** deferred (global revert budget is
-   the current trigger).
-- **Live TS `tool.execute.after` advance hook** (armed-run dogfood seam 7);
-   real-CI attestation feeding `attempt_gate` / G-3.2 sourcing (seam 8).
-- **Rust/C/C++ sandbox profiles** + the offline-deps fetch-then-seal decision.
-- **`bin/gleipnir-sandbox lint`** fails writing `__pycache__` under the ro `src`
-   mount (pre-existing, all files).
-- **Option C — plugin-hosted typed bookkeeping tools** (the session-scribe
-   graduation target; not built).
-- ~~**Broker guard policy enforcement:** secret-scan / branch-protection / data-file
-   checks NOT enforced by broker (avoids AETOS's false-positive lockup problem) —
-   they belong in git hooks. See `.gleipnir/plans/precommit-hook-control-proposal.md`
-   (proposal; not yet operator-applied — a tier3-coach output).~~ **CLOSED** — pre-commit
-   hook applied, activated, verified (see Built slices). **EVOLVED** — git-enforcement
-   now layered (config-scan in plugin, secret-scan in broker) per Approach C (commits
-   9cf8c96, 73f754b); takes effect next session after restart.
-- ~~**quality-reviewer returns EMPTY on plan-review tasks** (observed ~3x earlier
-   session — a reliability seam; the orchestrator had to self-verify plans by
-   direct read). Worth a candidate lesson.~~ **CLOSED** — empty-return discipline
-   baked into all 8 subagent files (L-C13 fix), verified this session.
+- S-2 activation (see "Open threads / next" above — operator acts pending).
+- S-2 mount + terminal closure + S-3 preflight.
+- E-1 credential-unreachability half.
+- E-2 platform-webhook receiver.
+- E-3 novelty-triage signal quality.
+- G-4 remainder (Seam 7, observer, novelty-triage, cost tracking).
+- Engine hybrid-C per-stage escalation.
+- Live TS `tool.execute.after` advance hook; real-CI attestation feeding `attempt_gate` / G-3.2.
+- Rust/C/C++ sandbox profiles + offline-deps fetch-then-seal.
+- Option C — plugin-hosted typed bookkeeping tools.
 
 ## Where to look
 
 - `../decisions/` — durable decision records (**authoritative**).
-- `../lessons/session-lessons-candidates.md` — L-C1..L-C10 (pre-graduation).
+- `../lessons/session-lessons-candidates.md` — L-C1..L-C26 (pre-graduation).
 - the spec — Part D E-seams; the canonical requirements.
 - `../plans/` — this + other Tier-0 session artifacts.
