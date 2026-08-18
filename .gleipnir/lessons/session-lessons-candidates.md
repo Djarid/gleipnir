@@ -427,6 +427,16 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C27 — operating-posture.md grants "instructed-agent MAY write Tier-3" under the uncaged default, but NO roster agent actually holds a Tier-3 write permission — the paradigm's write path has no agent to execute it
+
+**Observed (this session):** After OI-1 was fixed, two Tier-3 files (`decisions/go-caged-runbook.md`, `skills/go-caged/SKILL.md`) needed stale-reference corrections. `operating-posture.md` states that under the default uncaged posture "an agent acting under operator instruction MAY write Tier-3." But an audit of every roster agent's frontmatter showed **no subagent holds any Tier-3 write grant**: `gleipnir-plan`/`gleipnir-brainstorm` allow only `.gleipnir/plans/**`; `gleipnir-code` denies `.gleipnir/**` entirely; `session-scribe` allows only Tier-0 plus one named Tier-2 file; and the `orchestrator` denies `edit` outright. The prior SESSION-STATE claimed "the orchestrator applies Tier-3 files directly," which is inconsistent with the orchestrator's actual `edit: deny`. In this session the Tier-3 edits were only possible because the **primary session agent** (in build/interactive mode) holds `edit`/`write`/`bash` — not because any *roster* agent could act on the documented grant.
+
+**Proposed lesson:** (a) A documented capability ("agents MAY write Tier-3 under instruction") is only real if some concrete agent's permission map grants it; a paradigm decision-record and the roster frontmatter can silently diverge, and the divergence is invisible until a Tier-3 write is actually attempted. (b) When a decision-record grants a capability, cross-check that the grant is *materialised* in at least one agent's frontmatter, and name which agent — otherwise the "instructed-agent write path" is dead-lettered and every such write falls back to the operator/primary-session agent by default. (c) Candidate for structural resolution (route to brainstorm, do not silently pick): either (i) accept that Tier-3 writes are intentionally reserved to the operator/primary session even under uncaged, and correct `operating-posture.md` + SESSION-STATE wording to say so; or (ii) grant a specific bounded roster agent a narrow Tier-3 write path — but that itself is an enforcement-bearing change that must go through the hardened path.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-18 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
