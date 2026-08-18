@@ -44,8 +44,8 @@ S-2 OS acts) is REQUIRED for:
    artifacts others rely on, or multi-agent / hosted operation (C-tier).
 
 The operational procedure for entering caged mode is the `go-caged` runbook
-(a companion Tier-3 record) and its guiding skill — converged and planned; see
-`../plans/caged-mode-runbook-brainstorm.md` until the runbook record lands.
+([`go-caged-runbook.md`](./go-caged-runbook.md), a companion Tier-3 record) and
+its guiding skill (`../skills/go-caged/SKILL.md`).
 
 ## Key-protected floor (retained even in the uncaged default)
 
