@@ -61,16 +61,17 @@ VERIFY the result against the real box.
    proposal at execution time — this catches a stale reference.
 2. **Software layer.** Guide the operator to run the explicit
    `sudo bin/gleipnir-preflight --agent-uid <uid> --agent-gid <gid> --mode caged`
-   (no `--override-ack`) as the authoritative go/no-go — this is the ONE command
-   that enforces the gate. Remind them that **the explicit `--mode caged`
-   invocation** REFUSES (exit 1) if the boundary is not genuinely CLOSED — the
-   mode can never manufacture CLOSED. **Do NOT present `sudo bin/gleipnir-launch`
-   as an equivalent gate:** as drafted (act (6) of the control-proposal) the
-   wrapper calls the preflight WITHOUT `--mode caged`, so on a not-closed
-   boundary it exits 0 and launches under the neutral uncaged label — it does NOT
-   refuse. Treat the wrapper as a launch convenience only, and always run the
-   explicit `--mode caged` check first, until act (6) is amended to pass
-   `--mode caged` (runbook Cross-artifact note).
+   (no `--override-ack`) as the authoritative go/no-go. The explicit **`--mode
+   caged`** invocation REFUSES (exit 1) if the boundary is not genuinely CLOSED —
+   the mode can never manufacture CLOSED. The launch wrapper `bin/gleipnir-launch`
+   now **also** passes `--mode caged` in its embedded preflight (act (6) of the
+   control-proposal, as of commit `b1afa6f`), so it too fail-closes on a
+   not-closed boundary and will not drop-and-launch when caged is requested but
+   the boundary does not hold. Even so, still run the explicit Step-3 `--mode
+   caged` AC-4 check as the authoritative verification of the boundary state:
+   the wrapper enforces the gate mechanically, but confirming caged means reading
+   `closed` + an empty reasons list + exit 0 (AC-4), not merely observing that a
+   launch did not abort.
 3. **GO/NO-GO gate (AC-4).** Verify the no-override preflight reports `closed`,
    an **empty reasons list**, **exit 0**. That is the ONLY go signal. Anything
    else ⇒ NOT caged; report the failing reasons and stop — do not declare caged.

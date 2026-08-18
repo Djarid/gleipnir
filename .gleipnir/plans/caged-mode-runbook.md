@@ -158,30 +158,34 @@ ingesting untrusted content, or a higher-assurance context.
 - Skill → CITES BY REFERENCE → tier3-coach Anti-Pattern 3 (handoff + self-attestation discipline).
 - `operating-posture.md:47` already forward-links "the `go-caged` runbook" → this plan makes that link resolve.
 
-**Cross-artifact note + open item OI-1 (spec-review R-1 finding — `gleipnir-launch`
-is NOT a caged gate as drafted).** The `bin/gleipnir-launch` wrapper drafted in
-act (6) of `s2-activation-control-proposal.md` calls the preflight WITHOUT
-`--mode caged`, so it runs at the DEFAULT uncaged mode: on a NOT-closed boundary
-the uncaged/no-override path returns PROCEED_UNCLOSED under the neutral uncaged
-label and **exits 0** (`boundary.py:575-591` + `__main__.py` exit mapping), and
-because the wrapper uses `set -e`, exit 0 lets it **drop-and-launch even when the
-boundary is not closed**. Only an explicit `--mode caged` turns not-closed into
-REFUSE (exit 1). Both ready-to-apply artifacts are corrected to characterise the
-wrapper accurately (a launch convenience, not the gate) and to direct the
-operator to the explicit `--mode caged` AC-4 check as the ONLY authoritative
-gate. **The real fix — amending act (6)'s embedded preflight call to add
-`--mode caged`** — is an edit to `s2-activation-control-proposal.md`, which is
-**OUTSIDE this plan's touched-path set `P`** (this plan creates only the runbook +
-skill). This plan therefore does NOT apply it and RECORDS it as a required
-companion follow-up:
+**Cross-artifact note + open item OI-1 (spec-review R-1 finding — RESOLVED).**
+The `bin/gleipnir-launch` wrapper drafted in act (6) of
+`s2-activation-control-proposal.md` originally called the preflight WITHOUT
+`--mode caged`, so it ran at the DEFAULT uncaged mode: on a NOT-closed boundary
+the uncaged/no-override path returned PROCEED_UNCLOSED under the neutral uncaged
+label and **exited 0** (`boundary.py:575-591` + `__main__.py` exit mapping), and
+because the wrapper uses `set -e`, exit 0 let it drop-and-launch even when the
+boundary was not closed. **This is now FIXED** (commit `b1afa6f`): act (6)'s
+embedded preflight invocation in `s2-activation-control-proposal.md` now passes
+`--mode caged` —
 
-> **OI-1 (open item / cross-artifact dependency — required companion follow-up).**
-> Amend act (6) in `s2-activation-control-proposal.md` so the `bin/gleipnir-launch`
+    "$repo/bin/gleipnir-preflight" \
+      --agent-uid "$GLEIPNIR_AGENT_UID" --agent-gid "$GLEIPNIR_AGENT_GID" --mode caged
+
+— so the wrapper now turns a not-closed boundary into REFUSE (exit 1) and
+genuinely enforces the caged gate on every launch. The explicit `--mode caged`
+AC-4 check remains the authoritative way to *verify the boundary state itself*
+(reading `closed` + empty reasons + exit 0), but the wrapper is no longer a
+false-assurance launch path.
+
+> **OI-1 (RESOLVED — commit `b1afa6f`).** Act (6) in
+> `s2-activation-control-proposal.md` was amended so the `bin/gleipnir-launch`
 > embedded preflight call passes `--mode caged`, making the wrapper a genuine
-> fail-closed caged gate on every launch. Owner: operator (Tier-3 / `bin/`
-> territory; no roster agent can apply it). Until then, the explicit `--mode
-> caged` AC-4 check is the only authoritative gate. Surfaced in the runbook's
-> "Cross-artifact note" section so it is not lost.
+> fail-closed caged gate on every launch (reviewed SPEC-CONFORM: PASS, committed
+> and pushed). The fix was owned by the operator (Tier-3 / `bin/` territory; no
+> roster agent applies it). The explicit `--mode caged` AC-4 check is still the
+> authoritative go/no-go for confirming the boundary genuinely holds. Recorded
+> here as historical context and in the runbook's "Cross-artifact note" section.
 
 **Verified ground truth (against source, this session):**
 - `bin/gleipnir-preflight --agent-uid <uid> --agent-gid <gid> --mode caged` (no
@@ -197,11 +201,13 @@ companion follow-up:
 - The preflight is out-of-framework, operator-run, fail-closed; never routed
   into any agent allowlist (`__main__.py:1-12`) — the skill must NOT try to run
   it as an agent; it GUIDES the operator to run it.
-- **`bin/gleipnir-launch` as drafted (act (6), `s2-activation-control-proposal.md`
-  lines 124-126) calls the preflight WITHOUT `--mode caged`** → default uncaged;
-  on a not-closed boundary it exits 0 (PROCEED_UNCLOSED, neutral label) and, via
-  `set -e`, proceeds to launch. It is NOT a fail-closed caged gate as drafted.
-  Only the explicit `--mode caged` invocation refuses. (OI-1 above tracks the fix.)
+- **`bin/gleipnir-launch` (act (6), `s2-activation-control-proposal.md`) now
+  passes `--mode caged`** (commit `b1afa6f`) → on a not-closed boundary it
+  REFUSES (exit 1) rather than launching, so it is now a genuine fail-closed
+  caged gate on every launch. (It originally omitted `--mode caged` and, via
+  `set -e`, would launch on exit 0 — that is OI-1, now RESOLVED above.) The
+  explicit `--mode caged` AC-4 check remains the authoritative way to confirm the
+  boundary state itself.
 
 **Edge cases.**
 1. **Caged requested but boundary not CLOSED** → preflight exit 1 REFUSE; the
@@ -219,12 +225,13 @@ companion follow-up:
    agent GUIDES+VERIFIES, the operator executes; cite tier3-coach Anti-Pattern 3.
 6. **Skill over-triggers on casual "cage"**: description anchors triggers to the
    three posture categories and the specific phrases, not the bare word "cage".
-7. **Operator relies on `gleipnir-launch` as the caged gate** (the R-1 defect):
-   the wrapper as drafted does NOT `--mode caged`, so it launches uncaged on a
-   not-closed boundary — false assurance at the assurance-critical moment. Both
-   artifacts now characterise it accurately and route the operator to the
-   explicit `--mode caged` AC-4 check as the ONLY gate; OI-1 tracks amending the
-   wrapper to `--mode caged`.
+7. **Operator relies on `gleipnir-launch` as the caged gate** (the former R-1
+   defect, now RESOLVED — commit `b1afa6f`): the wrapper now passes
+   `--mode caged`, so it REFUSES (exit 1) on a not-closed boundary rather than
+   launching — the false-assurance path is closed at the wrapper itself. Both
+   artifacts still route the operator to the explicit `--mode caged` AC-4 check
+   as the authoritative way to confirm the boundary genuinely holds; OI-1 (the
+   wrapper amendment) is resolved.
 
 ---
 
@@ -309,20 +316,26 @@ Each is checkable by `grep`/read against the APPLIED files (post-change state).
 - **ST-7 (currency banner on the reference).** A banner states: source of truth
   for the OS acts = `s2-activation-control-proposal.md`; the skill's per-step
   verify catches a stale reference at execution time.
-- **ST-17 (`gleipnir-launch` accurately characterised — NOT a caged gate; R-1
-  fix).** The runbook does **NOT** claim `bin/gleipnir-launch` runs the same
-  no-override/caged preflight or enforces the gate. Instead it WARNS that, as
-  drafted, the wrapper calls the preflight without `--mode caged`, exits 0 on a
-  not-closed boundary, and is a launch convenience only — and directs the
-  operator to the explicit `--mode caged` AC-4 check as the ONLY authoritative
-  gate. Evidence: `grep -niE 'NOT a caged gate|launch convenience|WITHOUT .*--mode caged'`
-  → match; `grep -ni 'runs this same no-override preflight'` → **no match** (the
-  false-assurance sentence is removed). The runbook also has a **Cross-artifact
-  note** recording OI-1 (`grep -ni 'Cross-artifact note'` → match).
-- **ST-18 (OI-1 recorded as a named cross-artifact follow-up in the plan).** The
-  plan's Trace section names **OI-1**: amend act (6) in
-  `s2-activation-control-proposal.md` to pass `--mode caged`; owner = operator;
-  outside `P`; not applied by this plan. `grep -ni 'OI-1'` on the plan → match.
+- **ST-17 (`gleipnir-launch` accurately characterised — HISTORICAL, OI-1 now
+  RESOLVED).** *Original criterion (R-1 fix, when the wrapper omitted `--mode
+  caged`):* the runbook must WARN that the wrapper launched uncaged on a
+  not-closed boundary and route the operator to the explicit `--mode caged` AC-4
+  check as the authoritative gate. *Resolved state (commit `b1afa6f`):* act (6)
+  now passes `--mode caged`, so the wrapper genuinely enforces the caged gate on
+  every launch. The Tier-3 corrections HAVE BEEN APPLIED directly (see the
+  "OI-1 resolution — Tier-3 corrections APPLIED (historical)" section below,
+  which supersedes the earlier "ready-to-apply" pairs): the runbook's Step-2
+  note and Step-4 caveat now describe the wrapper as a genuine fail-closed gate
+  while still recommending the explicit `--mode caged` AC-4 check as the
+  authoritative way to confirm the boundary state. The runbook retains a
+  **Cross-artifact note** (`grep -ni 'Cross-artifact note'` → match), now
+  recording OI-1 as resolved rather than open.
+- **ST-18 (OI-1 recorded — HISTORICAL, now RESOLVED).** The plan's Trace section
+  named **OI-1** (amend act (6) in `s2-activation-control-proposal.md` to pass
+  `--mode caged`; owner = operator; outside `P`). That amendment has landed
+  (commit `b1afa6f`, reviewed SPEC-CONFORM: PASS, committed and pushed); the
+  Trace section now records OI-1 as RESOLVED citing that commit. `grep -ni 'OI-1'`
+  on the plan → match (now describing the resolved state, not an open item).
 
 **Skill (`.gleipnir/skills/go-caged/SKILL.md`):**
 - **ST-8 (C3 triggers, primary = "go caged").** Frontmatter `description`
@@ -759,3 +772,25 @@ the no-override preflight reports CLOSED. Until then the session is honestly
 labelled uncaged / dev-mode. This skill's discipline — guide + verify, never
 execute; gate on AC-4; never self-attest — is what keeps "go caged" honest.
 ```
+
+---
+
+## OI-1 resolution — Tier-3 corrections APPLIED (historical)
+
+OI-1 (act (6) of `s2-activation-control-proposal.md` now passes `--mode caged`;
+commit `b1afa6f`, reviewed SPEC-CONFORM: PASS, committed + pushed) is RESOLVED.
+The two Tier-3 files that carried stale "wrapper not yet fixed" language have been
+corrected directly (under the uncaged-default paradigm, the operator/build applies
+Tier-3):
+
+- `.gleipnir/decisions/go-caged-runbook.md` — Step-2 note, Step-4 caveat, and the
+  Cross-artifact note now describe the wrapper as a genuine fail-closed caged gate
+  (cite commit `b1afa6f`), while preserving the explicit `--mode caged` AC-4 check
+  as the authoritative boundary-state verification.
+- `.gleipnir/skills/go-caged/SKILL.md` — workflow step 2 now states the wrapper
+  also passes `--mode caged` and fail-closes, while still recommending the
+  explicit AC-4 check to confirm the boundary genuinely holds.
+
+The wrapper's mechanical fail-close is NOT conflated with AC-4: AC-4 (reading
+`closed` + empty reasons + exit 0) remains how the operator verifies the boundary
+state itself. No other passages in either Tier-3 file changed.

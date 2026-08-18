@@ -81,19 +81,16 @@ For live sessions there is the launch wrapper installed in act (6):
 
     sudo bin/gleipnir-launch
 
-> **WARNING — `gleipnir-launch` is NOT a caged gate as currently drafted.** As
-> drafted in act (6) of `s2-activation-control-proposal.md`, the wrapper invokes
-> the preflight **WITHOUT `--mode caged`** (i.e. at the DEFAULT uncaged mode). On
-> a NOT-closed boundary the uncaged/no-override path returns PROCEED_UNCLOSED
-> under the neutral uncaged label and **exits 0** — and because the wrapper uses
-> `set -e`, exit 0 lets it proceed to drop-and-launch **even when the boundary is
-> NOT closed**. It does NOT refuse. Only the **explicit `--mode caged`**
-> invocation turns a not-closed boundary into REFUSE (exit 1). Therefore: **always
-> run the explicit Step 3 `--mode caged` AC-4 check first as the go/no-go gate;
-> treat `gleipnir-launch` as a launch convenience only, never a substitute for
-> the gate — UNLESS the wrapper is amended to pass `--mode caged`** (see the
-> Cross-artifact note below). Until that amendment lands, the explicit `--mode
-> caged` check in Step 3 is the ONLY authoritative caged gate.
+> **`gleipnir-launch` now enforces the caged gate.** As of commit `b1afa6f`, act
+> (6) of `s2-activation-control-proposal.md` passes **`--mode caged`** in the
+> wrapper's embedded preflight, so the wrapper itself fail-closes: on a NOT-closed
+> boundary the `--mode caged` path returns REFUSE (exit 1) and, because the
+> wrapper uses `set -e`, it stops before dropping-and-launching. It will not
+> launch when caged is requested but the boundary does not hold. **Even so, still
+> run the explicit Step 3 `--mode caged` AC-4 check** as the authoritative
+> verification of the boundary state: the wrapper enforces the gate mechanically,
+> but confirming you are caged means reading `closed` + an empty reasons list +
+> exit 0 (AC-4), not merely observing that a launch did not abort.
 
 ## Step 3 — GO/NO-GO acceptance test (AC-4) — INLINE, the gate
 
@@ -112,12 +109,13 @@ from `../plans/s2-activation.md`.)
 ## Step 4 — Verify the posture holds
 
 Re-run the explicit Step 3 `--mode caged` AC-4 check as the authoritative gate
-for every session that must be caged; `sudo bin/gleipnir-launch` is a launch
-convenience, not the gate (see the Step 2 warning), until act (6)'s embedded
-preflight call is amended to pass `--mode caged` (Cross-artifact note). The
-`go-caged` skill re-verifies acts (1)–(6) against the real box before declaring
-you caged — it never self-attests a state it did not observe (a subagent's
-`question` cannot reach you; same discipline as tier3-coach Anti-Pattern 5).
+for every session that must be caged. `sudo bin/gleipnir-launch` now also
+fail-closes on `--mode caged` (as of commit `b1afa6f`), but AC-4 remains the way
+you *confirm* the boundary genuinely holds (reading `closed` + empty reasons +
+exit 0), not merely that a launch did not abort. The `go-caged` skill re-verifies
+acts (1)–(6) against the real box before declaring you caged — it never
+self-attests a state it did not observe (a subagent's `question` cannot reach
+you; same discipline as tier3-coach Anti-Pattern 5).
 
 ## Uncage / rollback (MINIMAL — the routine reversal)
 
@@ -152,19 +150,18 @@ OS wall: the agent uid cannot write the enforcement subtree, cannot read the
 key, and cannot `setuid` back to the owner. The operator ALWAYS knows which mode
 a session runs in (`operating-posture.md` honesty invariant).
 
-## Cross-artifact note — the `gleipnir-launch` wrapper needs amending
+## Cross-artifact note — the `gleipnir-launch` wrapper (OI-1, RESOLVED)
 
-The `bin/gleipnir-launch` wrapper drafted in act (6) of
-`../plans/s2-activation-control-proposal.md` calls the preflight WITHOUT
-`--mode caged`, so it launches under the default uncaged mode and does NOT
-fail-closed on a not-closed boundary (see the Step 2 warning). **The real fix is
-to amend act (6)'s embedded preflight call to add `--mode caged`** so the
-wrapper genuinely enforces the caged gate on every launch, matching this
-paradigm. That edit is to `s2-activation-control-proposal.md`, which is OUTSIDE
-this runbook's authorship — it is a **required companion follow-up**, tracked in
-the plan (`../plans/caged-mode-runbook.md`, open item OI-1). **Until the wrapper
-is amended, the explicit `--mode caged` AC-4 check in Step 3 is the ONLY
-authoritative caged gate** — never rely on `gleipnir-launch` as the gate.
+**RESOLVED (commit `b1afa6f`).** The `bin/gleipnir-launch` wrapper drafted in act
+(6) of `../plans/s2-activation-control-proposal.md` originally called the preflight
+WITHOUT `--mode caged`, so it launched under the default uncaged mode and did NOT
+fail-closed on a not-closed boundary. Act (6)'s embedded preflight call now passes
+`--mode caged`, so the wrapper genuinely enforces the caged gate on every launch,
+matching this paradigm. This closes open item OI-1 (tracked in
+`../plans/caged-mode-runbook.md`). The explicit Step 3 `--mode caged` AC-4 check
+remains the authoritative *verification* of the boundary state (reading `closed` +
+empty reasons + exit 0), which the wrapper's mechanical fail-close does not
+replace.
 
 ## Assembled pieces (provenance — none re-authored here)
 
