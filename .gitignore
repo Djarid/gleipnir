@@ -13,6 +13,9 @@ __pycache__/
 .gleipnir/keys/*.key
 .gleipnir/keys/*.secret
 
+# host-local S-2 caged-mode drop-target identity (per-machine uid/gid; never committed)
+.gleipnir/agent-identity.env
+
 # coverage data + sandbox runtime scratch
 .coverage
 .coverage.*
