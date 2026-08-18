@@ -121,9 +121,10 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/.." && pwd)
 . "$repo/.gleipnir/agent-identity.env"          # GLEIPNIR_AGENT_UID / _GID (one source)
 
-# 1. Fail-closed preflight AS OWNER, no override — must be CLOSED to proceed:
+# 1. Fail-closed caged preflight AS OWNER (--mode caged, no override) — the
+#    boundary must be CLOSED to proceed; caged mode refuses (exit 1) when not.
 "$repo/bin/gleipnir-preflight" \
-  --agent-uid "$GLEIPNIR_AGENT_UID" --agent-gid "$GLEIPNIR_AGENT_GID"
+  --agent-uid "$GLEIPNIR_AGENT_UID" --agent-gid "$GLEIPNIR_AGENT_GID" --mode caged
 # (exit 0 = CLOSED; the wrapper stops here on 1/2 because of `set -e`.)
 
 # 2. Drop to the agent account and exec opencode. `sudo -u#uid` requires root;
