@@ -7,27 +7,26 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
-**FOUNDATIONAL PARADIGM CHANGE THIS SESSION:** operating posture reversed to
-UNCAGED-by-default (commit 7b18bb1). Single-principal terminal operator is the
-trusted owning principal; agents under operator instruction MAY write Tier-3.
-Caged mode (fail-closed S-2 boundary + OS acts) is now OPT-IN, required only
-for unattended/autonomous, untrusted-content-ingestion, or higher-assurance
-contexts. G-3 key stays `mode 600` in BOTH modes (key-protected floor). Preflight
-now has `--mode {uncaged,caged}` selector; requested_mode NEVER participates in
-closure computation — safety invariant (traced + tested). Durable record:
-`decisions/operating-posture.md` (supersedes always-on-cage framing in
-`s2-g1-closure.md`, `substrate-design-pass.md`, `gleipnir-layout-and-memory-model.md`,
-`AGENTS.md`). Tests GREEN: 754 passed, 12 skipped.
+**CAGED-MODE OPERATOR-FACING CAPABILITY BUILT & PUSHED.** This session completed
+opt-in caged-mode work: built `.gleipnir/decisions/go-caged-runbook.md` (Tier-3,
+operator front door for entering caged mode) + `.gleipnir/skills/go-caged/SKILL.md`
+(Tier-3, guides operator through runbook vs. real box state, gates on AC-4).
+**Critical safety defect CAUGHT + FIXED in spec-review:** `bin/gleipnir-launch`
+as drafted calls preflight WITHOUT `--mode caged` → would silently launch uncaged
+when operator thinks they're caged. Both artifacts corrected to attribute gate ONLY
+to explicit `--mode caged` check; go-caged-runbook.md warns gleipnir-launch is
+convenience, not gate, until amended (→ OI-1 pickup item, below).
 
-**Built + committed this session:** preflight mode selector + tests (commit 7b18bb1);
-enforcement-path set E extended to `.gitattributes` + `.gitmodules` + rationale
-(commit 10b7edc); S-2 caged-mode docs (commit 53be4c4).
+Hardened-path review: SPEC-CONFORM PASS (after 1 fix round) + BLAST-RADIUS PASS +
+negative-check attestation (attested_by=quality-reviewer ≠ author); cognition-layer
+honour check no divergence. Operating-posture.md stale forward-ref fixed.
 
-Working tree clean, HEAD at commit `53be4c4` on main (3 commits ahead of prior
-`origin/main`; NOT pushed). All hardened-path reviews PASSED (spec-conform +
-blast-radius + negative-check attestations; cognition-layer honour checks clean).
-Cognition layer PROVEN LIVE (two plans this session used Gate 1 + Gate 2; gates
-fired for real, caught 2 reconciliation defects on paradigm plan).
+**Commits this session:** 10b7edc (enforce-path E extension), 7b18bb1 (uncaged paradigm),
+53be4c4 (S-2 caged docs), 3d136ad (runbook/skill draft), 0f52460 (spec-review fixes +
+push). All five now on origin/main; working tree clean, HEAD at `0f52460`.
+
+Tests GREEN: 754 passed, 12 skipped. Cognition layer PROVEN LIVE + VALIDATED
+(fired on caged-mode plan; caught safety defect in spec-review).
 
 ## Built slices (verified against disk / commits)
 
@@ -43,27 +42,36 @@ fired for real, caught 2 reconciliation defects on paradigm plan).
 - **Orchestrator context-cap** (Opus capped 250k / 32k output; compaction rules ported from AETOS; policy enforced at hook).
 - **Lessons L-C1–L-C26** (graduated through L-C10; L-C11–L-C26 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing).
 
-**Recent — PARADIGM REVERSAL + related work (THIS SESSION):**
-- **Operating posture — UNCAGED by default, OPT-IN caged (commit 7b18bb1)** — Durable decision: `decisions/operating-posture.md`. The framework's security boundary default REVERSED: single-principal operator is the trusted principal; agents under instruction MAY write Tier-3 (agents/, keys/, stage-role-map.md, decisions/, goals/). This is a LEGITIMATE default, not a deficiency. Caged mode (S-2 boundary + OS acts) is OPT-IN, required ONLY for (i) unattended/autonomous, (ii) untrusted-content ingestion, (iii) higher-assurance. G-3 key stays `mode 600` in BOTH modes (key-protected floor; uncaged is NOT all-or-nothing). **Mechanism (tested):** preflight has `RequestedMode {uncaged,caged}` + `--mode` CLI selector (`src/gleipnir/preflight/boundary.py`). Safety invariant: `requested_mode` NEVER participates in closure computation — uncaged can be legitimately unclosed; caged requested-but-unclosed REFUSES (exit 1). **IMPORTANT:** orchestrator applied Tier-3 edits this session under operator instruction (via escape hatch); this is now expected/legitimate, proving tier protection was dormant before. Tests: 754 passed, 12 skipped; new `tests/test_preflight_mode_selector.py`; 23 pre-existing tests updated for caged-request fail-closed guarantee. Hardened-path review: SPEC-CONFORM PASS (2 reconciliations removed foreclosed temporary-grant path) + BLAST-RADIUS PASS + negative-check attestation (attested_by=quality-reviewer ≠ author); cognition-layer honour check: no divergence.
-- **Enforcement-path set E extended (commit 10b7edc)** — Added `.gitattributes` + `.gitmodules` to Axis 2(a) enforcement-path literals (same blast-radius class as `.gitignore`). Per-file rationale: `.gitattributes` controls git behaviour (line-ending, filter/clean/smudge drivers, diff/merge selection, export-ignore, binary treatment — a silent change alters stored content); `.gitmodules` declares submodule URLs/paths (URL change = supply-chain / version-control-integrity surface). Explicit enumeration per opencode.jsonc precedent (not fuzzy predicate). Lock-files remain the sole deferred member of same-class gap (Approach B: open-ended basename list, nested subproject appearance breaks repo-root-only invariant — deferred explicit). Hardened-path review PASSED.
-- **Cognition layer — PROVEN LIVE (TWO PLANS RAN GATE 1 + GATE 2 THIS SESSION)** — Not a new guard; fills the ATLAS/GOTCHA-from-prose-only gap. Two plans ran full cognition cycle (override-paradigm + enforcement-path-gap-closure); both submitted Design Principles section (Gate 1, case-routed by Axis-1 `X`); both passed spec-review intent-quality check + quality honour check (Gate 2 distinct checks). Gate 2 CAUGHT 2 reconciliation defects on paradigm plan (anti-vacuity rule + stale temporaries); gates fired for real. Validated as structurally live, not just documented. Marked DONE/VALIDATED in open threads (below).
-- **S-2 caged-mode supporting docs (commit 53be4c4)** — Three new Tier-0 planning artifacts: `s2-activation-launch-habit.md` (C1 dev-mode status quo), `s2-activation-control-proposal.md` (C2 ready-to-apply operator-only OS acts), `caged-mode-runbook-brainstorm.md` (converged design brief for runbook + go-caged skill). Next step: gleipnir-plan drafts the runbook + skill (Tier-3 decisions/ + skills/) from the brief.
+**Recent — PARADIGM REVERSAL + CAGED-MODE OPERATOR CAPABILITY (THIS SESSION, PUSHED commit 0f52460):**
+- **Operating posture — UNCAGED by default, OPT-IN caged (commit 7b18bb1)** — Durable decision: `decisions/operating-posture.md`. Framework security boundary default REVERSED: single-principal operator is trusted principal; agents under instruction MAY write Tier-3. Caged mode (S-2 boundary + OS acts) is OPT-IN, required ONLY for (i) unattended/autonomous, (ii) untrusted-content ingestion, (iii) higher-assurance. G-3 key stays `mode 600` in BOTH modes (key-protected floor). **Mechanism (tested):** preflight has `RequestedMode {uncaged,caged}` + `--mode` CLI selector. Safety invariant: `requested_mode` NEVER participates in closure — uncaged can be unclosed; caged-requested-but-unclosed REFUSES. Tests 754 passed, 12 skipped; `tests/test_preflight_mode_selector.py` + 23 pre-existing updated. Hardened-path review: SPEC-CONFORM (2 reconciliations) + BLAST-RADIUS + attestation (attested_by≠author); cognition honour check: clean.
+- **Enforcement-path set E extended (commit 10b7edc)** — Added `.gitattributes` + `.gitmodules` to Axis 2(a) literals (same blast-radius class as `.gitignore`). Rationale per file: `.gitattributes` controls git behaviour (line-ending, filters, diff/merge selection; silent change alters stored content); `.gitmodules` declares submodule URLs (URL change = supply-chain surface). Explicit enumeration per opencode.jsonc precedent. Lock-files deferred (nested subprojects + open-ended basenames). Hardened-path review PASSED.
+- **Caged-mode operator-facing capability BUILT & PUSHED (commits 53be4c4 → 3d136ad → 0f52460)** — **Artifacts (Tier-3, now on main):** `.gleipnir/decisions/go-caged-runbook.md` (operator front door; inlines --mode caged invocation, AC-4 gate, rollback; REFERENCES not duplicates six S-2 C2 OS acts). `.gleipnir/skills/go-caged/SKILL.md` (guides + verifies operator through runbook vs. box state, gates on AC-4; operator-executes-acts, hybrid shape like tier3-coach). Sibling to tier3-coach (detects gaps vs. executes lockdown). **Critical safety defect caught in spec-review (commit 0f52460 fix round):** `bin/gleipnir-launch` as drafted called preflight WITHOUT `--mode caged` → would silently launch uncaged when operator thinks caged. BOTH artifacts corrected; gate attributed ONLY to explicit `--mode caged` check. Runbook warns wrapper is convenience, not gate, until amended (→ OI-1, above). Operating-posture.md stale ref fixed. Hardened-path: SPEC-CONFORM (1 fix) + BLAST-RADIUS + attestation (attested_by≠author); cognition honour check clean.
+- **Cognition layer PROVEN LIVE + VALIDATED** — Not a guard; fills ATLAS/GOTCHA-prose gap. Two plans this session ran Gate 1 + Gate 2 (caged-mode paradigm + enforcement-path plans). Both submitted Design Principles (Gate 1 case-routed). Spec-review intent-quality + quality honour checks both fired (Gate 2 distinct). **Gate 2 CAUGHT 2 reconciliation defects on paradigm plan** (anti-vacuity rule + stale temporaries); gates fire for real, not documentally. Validated structurally live.
 
 ## Open threads / next
 
-**Stream 2 — caged-mode runbook + go-caged skill (CONVERGED, ready to PLAN then apply):**
-- **Brief:** `.gleipnir/plans/caged-mode-runbook-brainstorm.md` (operator-converged C1–C5). Converged decisions: (C1) runbook lives in Tier-3 `decisions/` home, agent drafts / operator authors — NOTE under new default-uncaged paradigm the orchestrator can also apply Tier-3 on operator instruction; (C2) NEW sibling skill `go-caged` (distinct from `tier3-coach`; executes a known lockdown on operator request vs. tier3-coach detecting gaps); (C3) trigger phrases anchored to the three operating-posture triggers (unattended, untrusted-content, higher-assurance); (C4) HYBRID inline rendering (--mode caged invocation, AC-4 test, rollback), reference the six S-2 C2 OS acts in `s2-activation-control-proposal.md`; (C5) minimal uncage (stop requesting caged; key floor never relaxed; full teardown separate). **NEXT:** gleipnir-plan plans this from the brief, drafts the runbook (Tier-3 `decisions/go-caged-runbook.md` or similar) + the skill (Tier-3 `skills/go-caged/`), orchestrator applies Tier-3 edits under operator instruction (now legitimate).
+### ⭐ START HERE NEXT SESSION: Two explicit pickup items
 
-**S-2 C2 operator acts (opt-in caged-mode activation, DEFERRED, operator-only):**
-- **Six OS acts in `s2-activation-control-proposal.md`** (ready-to-apply tier3-coach proposal): (i) create gleipniragent uid/gid 510; (ii) populate agent-identity.env; (iii) ownership/group layout + root sudo wrapper; (iv) chmod 8 LOCKED ENFORCEMENT_PATHS OS-ro to agent uid; (v) G-3 key `mode 600` owner-only (ALREADY DONE this session); (vi) preflight 100755. Ground truth verified: uid/gid 510 free, gleipniragent absent, key already 600, preflight already 100755. **AC-4 acceptance test:** `sudo --preserve-groups gleipniragent preflight` → CLOSED verdict, empty reasons, exit 0. Acts reframed by paradigm change from "the baseline requirement" to "the opt-in caged-mode procedure." Status: ready-to-apply, awaiting operator.
+**OI-1 — FIX `bin/gleipnir-launch` wrapper (closes safety defect, Tier-3 `bin/`):**
+Spec-review caught that `bin/gleipnir-launch` as drafted in `.gleipnir/plans/s2-activation-control-proposal.md` act (6) calls preflight WITHOUT `--mode caged` → would silently launch uncaged when operator thinks they're caged. **The real fix:** amend the embedded preflight call to add `--mode caged` so wrapper genuinely enforces caged gate on every launch. Small, scoped change; enforces the runbook's safety invariant. Cross-referenced in go-caged-runbook.md "Cross-artifact note" and tracked as OI-1 in `.gleipnir/plans/caged-mode-runbook.md`. Under default-uncaged paradigm orchestrator MAY apply this on operator instruction, OR operator applies directly. Route change hardened (enforcement-adjacent, caged-gate wrapper, safe-side per this session's precedent).
 
-**Stream 3 — retained open threads from prior sessions (keep current):**
+**OI-2 — S-2 C2 activation (operator root OS acts; use `go-caged` skill guide):**
+Six acts in `.gleipnir/plans/s2-activation-control-proposal.md` — ready-to-apply (i) create gleipniragent uid/gid 510; (ii) agent-identity.env; (iii) ownership/group layout + root wrapper; (iv) chmod 8 LOCKED ENFORCEMENT_PATHS OS-ro to agent uid; (v) G-3 key `mode 600` owner-only (VERIFIED DONE this session, -rw-------); (vi) preflight 100755 (VERIFIED DONE). AC-4 test: `sudo --preserve-groups gleipniragent preflight` → CLOSED verdict, empty reasons, exit 0. Ground truth: uid/gid 510 free, gleipniragent absent. **Next session:** load `skills/go-caged/SKILL.md` (built this session) — it is the guided front door for walking these acts. Operator executes the root acts; skill verifies each against real box state, gates on AC-4 go/no-go, provides rollback. **DO OI-1 FIRST** so wrapper is correct before it's installed in act (6).
+
+---
+
+**Stream 2 — caged-mode runbook + go-caged skill (BUILT & PUSHED, commit 0f52460):**
+- **Brief:** `.gleipnir/plans/caged-mode-runbook-brainstorm.md` (converged C1–C5).
+- **Artifacts NOW LANDED:** `.gleipnir/decisions/go-caged-runbook.md` (operator front door for entering caged mode; inlines --mode caged invocation, AC-4 gate, minimal uncage); `.gleipnir/skills/go-caged/SKILL.md` (guides + verifies operator through runbook, gates on AC-4; operator-applies-acts, same hybrid shape as tier3-coach). REFERENCES (not duplicated) six S-2 C2 OS acts from s2-activation-control-proposal.md (C4 anti-drift, no duplication). Sibling to tier3-coach (tier3-coach detects gaps + proposes; go-caged executes known lockdown).
+
+**Background threads (lower-priority, prior sessions):**
 - **G-4 remainder:** Seam 7 (live `tool.execute.after` hook); Observer + novelty-triage; Token provenance / cost tracking.
 - **E-1 credential-unreachability:** Argument-policy half closed; credential half still open (brokers co-located with env-injected tokens; S-2 necessary-but-not-sufficient).
 - **E-2 platform-webhook receiver:** no component home yet.
 - **E-3 novelty-triage signal quality:** Seam 7 + observer will reveal.
 - **S-2 structural:** mount + terminal closure + S-3 wiring; Rust/C/C++ profiles + offline-deps decision; Option C (plugin-hosted bookkeeping); engine hybrid-C per-stage escalation.
 - **Prose/config-only track deferred:** lock-files (same class as `.gitattributes`/`.gitmodules`, deferred; nested subproject appearance + open-ended basenames).
+- **Cognition layer:** PROVEN LIVE & VALIDATED (fired on caged-mode plan; spec-review intent-quality check caught safety defect; quality honour check ran; two plans this session used full Gate 1 + Gate 2).
 
 ## Open seams (absorbed from old session-seams-ledger.md; NOT authoritative)
 
