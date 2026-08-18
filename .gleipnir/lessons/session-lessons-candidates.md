@@ -437,6 +437,16 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C28 — a ready-to-apply OS/host proposal that CREATES a host-local file must also specify that file's gitignore treatment; omitting it leaves an accidental-commit gap that only surfaces at apply time
+
+**Observed (this session, during OI-2 S-2 activation):** Act (2) of `s2-activation-control-proposal.md` creates `.gleipnir/agent-identity.env` (host-specific `GLEIPNIR_AGENT_UID`/`GID`), correctly setting it owner-owned mode-644 — but the proposal never said to gitignore it. After the operator ran act (2), `git status` showed the file as untracked-but-stageable (`?? .gleipnir/agent-identity.env`), one `git add -A` away from committing a per-machine value into shared history. The repo already had the exact precedent for the right treatment (`.gitignore` lines 12-14: `.gleipnir/keys/*.key` / `*.secret`, "real key material never is [versioned]"), so the gap was an omission, not a hard problem. Closed mid-activation with a hardened-path `.gitignore` edit (commit `1b4b2f2`), reviewed SPEC-CONFORM + BLAST-RADIUS + attestation.
+
+**Proposed lesson:** (a) Any control proposal / runbook step that CREATES a new file on the host should, in the same step, state that file's version-control disposition — tracked, or ignored-and-why — especially when the file is host-specific (uids, paths, machine identity) or secret-adjacent. A create-step that is silent on gitignore treatment is incomplete. (b) When such a gap is found at apply time, check for an existing same-class precedent in `.gitignore` (here, `keys/*.key`) and follow it, rather than inventing a new pattern. (c) `.gitignore` edits are `E`-set enforcement-path (Axis 2(a), always hardened) because they govern the audit trail — so closing this kind of gap is a hardened-path change (two non-fusing rubrics + negative-check attestation that the added pattern is the narrowest literal path and does not broaden to hide `keys/**` digests or tracked files), never a silent inline fix. (d) Candidate structural improvement: the S-2 activation proposal (and future create-a-host-file proposals) should carry the gitignore line as part of the create act itself, so activation and version-control hygiene land together.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-18 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
