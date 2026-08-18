@@ -98,15 +98,24 @@ A track-eligible plan is **enforcement-bearing** (→ hardened path) if EITHER:
   itself; the root opencode config `opencode.jsonc` / `**/opencode.json`
   (it loads this map via `instructions`, gates the MCP brokers via `enabled`,
   and sets `default_agent`); or the repo-root cross-cutting files
-  `.gitignore`, `.envrc`, and `pyproject.toml` — each **always** hardened by
-  exact-path match. Rationale, per file: `.gitignore` governs what reaches
+  `.gitignore`, `.envrc`, `pyproject.toml`, `.gitattributes`, and
+  `.gitmodules` — each **always** hardened by exact-path match. Rationale, per
+  file: `.gitignore` governs what reaches
   version control, including whether the `.gleipnir/keys/**` integrity digests
   (the G-3 audit trail — versioned by policy, see `keys/README.md`) keep being
   committed; a plan silently adding `*.digest` there is an audit-trail bypass.
   `.envrc` sets `OPENCODE_CONFIG_DIR=.gleipnir`, wiring which config dir
   opencode loads at all. `pyproject.toml` carries the dependency ranges bound
   to the stdlib-only enforcement-core constraint
-  (`decisions/runtime-and-deps.md`). These are enumerated **explicitly** (the
+  (`decisions/runtime-and-deps.md`). `.gitattributes` governs per-path git
+  behaviour (line-ending normalisation, `filter`/`clean`/`smudge` drivers,
+  `diff`/`merge` driver selection, `export-ignore`, binary treatment); a
+  changed attribute can silently alter how tracked content is stored, filtered,
+  or diffed — same version-control-behaviour class as `.gitignore`.
+  `.gitmodules` declares submodule URLs/paths; a changed URL can point a
+  submodule at attacker-controlled content pulled into the tree — a
+  supply-chain / version-control-integrity surface, same class as `.gitignore`.
+  These are enumerated **explicitly** (the
   `opencode.jsonc`/round-1 precedent), not via a fuzzy "repo-root files that
   wire enforcement" predicate: that predicate is a judgment call, not
   grep-able, and would reintroduce the non-determinism the classifier exists to
@@ -115,7 +124,17 @@ A track-eligible plan is **enforcement-bearing** (→ hardened path) if EITHER:
   patterns it touches) because "which ignore patterns are enforcement-adjacent"
   is itself a judgment surface — always-hardened over-includes a few benign
   edits but never under-reviews an audit-trail bypass (integrity > efficiency,
-  as with the standalone-YAML disqualification above); **or**
+  as with the standalone-YAML disqualification above). Lock-files
+  (`package-lock.json`, `poetry.lock`, `Cargo.lock`, `yarn.lock`,
+  `Pipfile.lock`, `pnpm-lock.yaml`, …) are in the **same blast-radius class**
+  (a silent lock-file edit is a known supply-chain vector) but are
+  **deliberately NOT enumerated here yet** — they are DEFERRED to their own
+  dedicated convergence because they can appear **nested** in subprojects
+  (breaking the repo-root-only invariant of every other literal above) and
+  their basename list is open-ended and ecosystem-versioned; folding that
+  unresolved tradeoff into this clean-parity amendment is explicitly avoided.
+  Lock-files remain the sole outstanding member of this same-class gap after
+  this amendment; **or**
 - **(b) content rule:** an added/changed line matches a grant/enforcement
   pattern `G`, in EITHER its YAML/frontmatter form OR its JSON(C) form:
     - YAML: a `permission:` or `tools:` block, or a capability line
