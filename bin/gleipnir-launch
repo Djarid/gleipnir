@@ -1,0 +1,44 @@
+#!/bin/sh
+# bin/gleipnir-launch — operator-owned; run under sudo (root is needed to
+# setuid to another account on macOS). Sources the SAME agent-identity.env as
+# the preflight (single source of truth for the drop target), runs the
+# fail-closed CAGED preflight, then drops to the agent account and execs
+# opencode. Installs the S-2 caged boundary on every launch.
+#
+# OPERATOR / Tier-3 territory (bin/): created by the operator (or by the
+# operator-instructed build under the uncaged-default paradigm), never by an
+# in-framework agent. Not granted to any agent allowlist.
+#
+# Usage:  sudo bin/gleipnir-launch
+set -eu
+
+here=$(cd "$(dirname "$0")" && pwd); repo=$(cd "$here/.." && pwd)
+. "$repo/.gleipnir/agent-identity.env"          # GLEIPNIR_AGENT_UID / _GID (one source)
+
+# The G-3 marker key location. The preflight resolves the key ONLY from
+# GLEIPNIR_MARKER_KEY_FILE (boundary.py:1030). Because this wrapper is invoked
+# under `sudo` — which uses env_reset and does NOT env_keep this var — the
+# variable set in the operator's interactive shell is STRIPPED before the
+# wrapper runs. So the wrapper must (re-)establish it from $repo before calling
+# the preflight, or the caged preflight would see "key absent" and REFUSE
+# (exit 1), and `set -e` would abort the launch even on a correctly-caged box.
+: "${GLEIPNIR_MARKER_KEY_FILE:=$repo/.gleipnir/keys/marker.key}"
+export GLEIPNIR_MARKER_KEY_FILE
+
+# 1. Fail-closed CAGED preflight AS OWNER (--mode caged, no override) — the
+#    boundary must be CLOSED to proceed; caged mode refuses (exit 1) when not.
+"$repo/bin/gleipnir-preflight" \
+  --agent-uid "$GLEIPNIR_AGENT_UID" --agent-gid "$GLEIPNIR_AGENT_GID" --mode caged
+# (exit 0 = CLOSED; the wrapper stops here on 1/2 because of `set -e`.)
+
+# 2. Drop to the agent account and exec opencode. `sudo -u#uid` requires root;
+#    the assert below independently confirms the run uid == the preflight's
+#    drop target before exec (defence in depth, not trust of the drop).
+exec sudo -u "#${GLEIPNIR_AGENT_UID}" -g "#${GLEIPNIR_AGENT_GID}" \
+  /bin/sh -c '
+    if [ "$(id -u)" != "'"$GLEIPNIR_AGENT_UID"'" ]; then
+      echo "gleipnir-launch: run uid $(id -u) != drop target '"$GLEIPNIR_AGENT_UID"'" >&2
+      exit 1
+    fi
+    exec opencode
+  '
