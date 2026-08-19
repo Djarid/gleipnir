@@ -43,24 +43,43 @@ This is the identical guides-but-operator-applies handoff as
 - A free uid/gid chosen for the agent account (verify free first — see the OS
   acts reference).
 
-## Step 1 — OS-layer setup (the six S-2 acts) — REFERENCE, run once
+## Step 1 — OS-layer setup (the six S-2 acts) — run once, PREFER the Ansible playbook
 
-Run acts **(1)–(6)** exactly as written in
-[`../plans/s2-activation-control-proposal.md`](../plans/s2-activation-control-proposal.md):
+The six OS acts are now **codified as an idempotent, self-verifying Ansible
+playbook** (`ansible/site.yml`, decision `s2-caged-ansible.md`). Running the
+playbook is the **preferred** way to do Step 1: it is re-runnable (a second run
+reports zero changes), it fixes the ordering hazards the manual acts carry (the
+transient key-loosening between acts 3–5), and it runs the AC-4 gate as a
+**failing assertion** so the run fails if the boundary did not genuinely close.
+
+```sh
+# Requires Ansible on PATH (brew install ansible ansible-lint).
+# Run as the operator, under sudo (acts 1/3/5/6 create the account + chown/chmod):
+sudo ansible-playbook -i ansible/inventory.ini ansible/site.yml
+```
+
+The playbook performs acts **(1)–(6)**:
 
 1. Create the dedicated agent uid/gid.
 2. `agent-identity.env` single source of truth for the drop target.
-3. Ownership / group layout (agent reads source; writes Tier-0/1/2 only).
-4. `chmod` the ENFORCEMENT_PATHS subtree OS-read-only to the agent uid.
+3. Ownership / group layout (agent reads source; writes Tier-0/1/2 only) —
+   scoped to NOT overlap the enforcement subtree (idempotency; decision D5).
+4. `chmod` the ENFORCEMENT_PATHS subtree OS-read-only to the agent uid —
+   `keys/` hardening excludes the key file, which act 5 owns (decision D6).
 5. Place the G-3 key mode-600, owner-only.
 6. Install the root-elevated launch wrapper `bin/gleipnir-launch`.
 
-> **Source of truth for these six commands = `s2-activation-control-proposal.md`.**
-> They are deliberately NOT copied here: they are long, host-specific, and
-> occasionally revised, so a second copy would drift. This runbook references
-> them; the `go-caged` skill re-reads that file and **verifies each step against
-> the real box at execution time**, catching a stale reference. Do these once
-> per host; Steps 2–4 below are the repeated operational surface.
+> **Two sources of truth, one per layer.** The authoritative *specification* of
+> the six acts (what OS end-state, and the hand-run shell form) remains
+> [`../plans/s2-activation-control-proposal.md`](../plans/s2-activation-control-proposal.md);
+> the authoritative *mechanisation* is `ansible/site.yml` (with `ansible/README.md`).
+> They agree on the OS end-state; the playbook deliberately refines the *how* for
+> idempotency (D5/D6 in `s2-caged-ansible.md`), which is why a second run is a
+> no-op. **Manual fallback:** if Ansible is unavailable, run acts (1)–(6) by hand
+> from the control-proposal exactly as written; the `go-caged` skill re-reads that
+> file and **verifies each step against the real box at execution time**, catching
+> a stale reference. Do Step 1 once per host; Steps 2–4 below are the repeated
+> operational surface.
 
 ## Step 2 — Software-layer: the `--mode caged` invocation (INLINE)
 
