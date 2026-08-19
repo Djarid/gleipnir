@@ -1,17 +1,20 @@
 # Decision: Config/scoping preflight (`config_scan.py`) — agent/config CONTENT validation
 
-**Status: authored, built, WIRED on both the broker-plugin path AND the VCS
-pre-commit hook; CI wiring still deferred.** The check exists, passes against
+**Status: authored, built, WIRED on the broker-plugin path, the VCS
+pre-commit hook, AND CI (push/PR).** The check exists, passes against
 the live repo, and is available as a `gleipnir-preflight config-scan`
-subcommand. It now runs automatically on **two** paths: (1) the `git-guard.ts`
+subcommand. It now runs automatically on **three** paths: (1) the `git-guard.ts`
 opencode plugin runs it before every `gleipnir-git` broker write (agent commit
-path); and (2) the active `hooks/pre-commit` VCS hook runs it ALWAYS-ON on every
+path); (2) the active `hooks/pre-commit` VCS hook runs it ALWAYS-ON on every
 commit (human or agent — the broker cannot pass `--no-verify`), fail-closed on a
 REFUSE or a can't-run, mirroring the git-guard exit-contract (0 proceed / 1 block
 / 2 warn+proceed / else+can't-run block). See
 `../plans/config-scan-precommit-hook.md` + `tests/test_precommit_hook.sh`
-(12-case host shell test, all green). **Still deferred:** running config-scan in
-CI (a push/PR-time gate independent of local hook state). Authored/built via the
+(12-case host shell test, all green); and (3) a GitHub Actions push/PR gate
+(`.github/workflows/config-scan.yml`) that runs it independently of local hook
+state, hard-failing on exit 2 (`PROCEED_UNCLOSED`) as a deliberate, documented
+divergence from the plugin/hook warn-and-proceed contract — see
+`../plans/config-scan-ci-wiring.md`. Authored/built via the
 pipeline; Tier-3 record authored by the operator via the build-mode escape hatch.
 Plan of record: `../plans/config-scoping-preflight.md` (twice spec-reviewed + a
 design-coherence pass; full ATLAS with the Design Consolidation contract).
@@ -82,14 +85,25 @@ mis-scopes) at restart" defects *before* the operator restarts.
 
 ## Honesty labels / open items
 
-- **Enforced automatically on commit + broker write; CI still deferred.** The
+- **Enforced automatically on commit, broker write, AND CI.** The
   check now runs (a) via `git-guard.ts` before every `gleipnir-git` broker write,
-  and (b) via the ALWAYS-ON `hooks/pre-commit` VCS hook on every commit
+  (b) via the ALWAYS-ON `hooks/pre-commit` VCS hook on every commit
   (fail-closed; operator-converged, plan `../plans/config-scan-precommit-hook.md`,
-  hardened-reviewed GO). The remaining deferred piece is a **CI** gate (push/PR
-  time, independent of local hook state) — its own future convergence. Before
-  this wiring the check caught the bug class only if someone ran it manually;
-  that gap is now closed for the commit + broker paths.
+  hardened-reviewed GO), and (c) via a GitHub Actions push/PR gate
+  (`.github/workflows/config-scan.yml`, plan `../plans/config-scan-ci-wiring.md`,
+  hardened-reviewed GO) — a push/PR-time gate independent of local hook state.
+  **Exit-2 divergence (durable record):** CI hard-fails on exit 2
+  (`PROCEED_UNCLOSED`), deliberately diverging from the plugin/hook
+  warn-and-proceed, because CI is the authoritative non-interactive gate with no
+  live operator behind an `--override-ack`; exit 0/1/else are mirrored unchanged
+  across all three paths. This is the durable home of that divergence so a
+  future cross-runtime drift-check treats it as a recorded, intentional
+  exception, not accidental mismatch. **Rollout is advisory / non-required**;
+  marking the check a *required* GitHub branch-protection status check is an
+  operator follow-up (repo-settings UI, not tracked YAML) once the check is
+  observed green. Before this wiring the check caught the bug class only if
+  someone ran it manually; that gap is now closed for all three paths (broker,
+  local commit, and CI).
 - **Durable design notes from the pre-commit wiring** (the Tier-0 plan is
   disposable; these decisions are kept here so they survive it):
   - **Fail-closed on can't-run, not just on REFUSE (operator-converged).** If
