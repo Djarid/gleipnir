@@ -90,6 +90,31 @@ mis-scopes) at restart" defects *before* the operator restarts.
   time, independent of local hook state) — its own future convergence. Before
   this wiring the check caught the bug class only if someone ran it manually;
   that gap is now closed for the commit + broker paths.
+- **Durable design notes from the pre-commit wiring** (the Tier-0 plan is
+  disposable; these decisions are kept here so they survive it):
+  - **Fail-closed on can't-run, not just on REFUSE (operator-converged).** If
+    config-scan cannot execute at all (missing/non-executable CLI, absent venv,
+    infra error) the hook REFUSES the commit — it does not fail-open with a
+    warning. Matches config-scan's own fail-closed design and the framework
+    posture; a human may `git commit --no-verify`, but the `gleipnir-git` broker
+    cannot pass `--no-verify`, so agents cannot bypass it.
+  - **Exit-contract single-sourced with `git-guard.ts`.** The hook mirrors the
+    plugin's mapping exactly (0 proceed / 1 block / 2 warn+proceed / any other
+    code or can't-run → fail-closed block), so the broker-write path and the
+    VCS-commit path agree. Mapping duplicated across the TS plugin and the POSIX
+    hook is accepted (two runtimes, cannot share code); a review-time drift check
+    guards it rather than a shared module.
+  - **Host shell tests execute OUTSIDE the roster grant (reusable insight).**
+    Spec-review caught that the plan initially mis-routed test *execution*
+    (`sh tests/test_precommit_hook.sh`) to `gleipnir-code`, whose bash grant
+    denies `sh*`/`bash*`/`*` (only `bin/gleipnir-sandbox test|lint` exact-match).
+    No roster subagent can run a raw host shell test; the executor is the
+    operator or a build session holding `bash`. The `test_git_guard.mjs` /
+    `test_sequence_gate.mjs` "host-run" precedent is a *where-it-runs* precedent,
+    not an *executed-by-the-agent* one — that grant was tightened when the sandbox
+    landed. Any future host-shell test must name a real executor, not assume a
+    roster agent can run it. (See also L-C29 for the secret-fixture-at-runtime
+    rule the same test surfaced.)
 - **Residual fast-follow (non-blocking):** `config_scan_main`'s
   `jsonc_agent_overrides` comprehension assumes each `opencode.jsonc` `agent`
   block is a dict; a malformed agent entry (e.g. `"agent": {"foo": true}`) could

@@ -94,16 +94,47 @@ required; SOLID/SRP attested `N/A — no object/function structure`.
 ## Consequences
 
 - **Relationship to the runbook:** `go-caged-runbook.md` Step 1 becomes "run the
-  Ansible playbook" (the runbook prose should be updated to point at it — a
-  follow-up, not this record). Steps 2–4, uncage, and the honesty label remain
-  the operator-operational surface the playbook does not touch.
+  Ansible playbook" (DONE — the runbook Step 1 was updated to prefer the playbook
+  while retaining the manual acts as spec/fallback, FU-3). Steps 2–4, uncage, and
+  the honesty label remain the operator-operational surface the playbook does not
+  touch.
 - **New dependency:** Ansible must be installed (brew/pipx) to run the playbook.
   This is operator tooling, outside the stdlib-only enforcement-core constraint
   (`runtime-and-deps.md`) — the enforcement core is unchanged; Ansible is a
   host-provisioning tool the operator runs, not a framework runtime dependency.
+  (Installed this session on this box: ansible-core 2.21.3, ansible-lint 26.8.0.)
 - **Testability:** the playbook carries a `--check` dry-run path and a verify
   play; the AC-4 assertion converts "we assume it closed" into "the run fails if
-  it did not."
+  it did not." The 3-layer harness (D3) is now proven green (D4-FU done).
+
+## FU-2 (the `[profile.ansible]` sandbox image) — skipped, but NOT purely redundant
+
+FU-2 (build a hardened `[profile.ansible]` sandbox image + a digest-pinned
+`profiles.toml` entry so the Ansible tests run bounded/in-container, like the
+rest of the framework's tests) was **skipped this session** as an operator
+decision, on the ground that it is redundant to FU-1 (host `brew install ansible`
++ running the harness on the host). That is true *for the immediate goal of
+getting the harness to green*. It is recorded here so the residual is not lost:
+FU-2 is **not purely cosmetic**, and the reasons it may still be worth doing are
+durable, not chat-only:
+
+- **Bounded-execution consistency.** The whole framework discipline is
+  in-container/bounded execution (`gleipnir-code` may only run
+  `bin/gleipnir-sandbox`; profiles are digest-pinned; host `pytest`/`make`/`npm`
+  were deliberately removed when the sandbox landed). FU-1 runs the Ansible tests
+  **on the host, unbounded** — a legitimate exception for a trusted operator in an
+  uncaged session, but an exception to the framework's own model nonetheless.
+- **No agent/CI-driven re-verification.** Without `[profile.ansible]`, the Ansible
+  tests cannot run through the normal `gleipnir-code`/sandbox path — only the
+  operator (or a build session holding `bash`) can run them. Every future change
+  to `ansible/**` therefore needs a human to run the harness; there is no bounded,
+  agent-reachable way to re-verify the playbook.
+- **Host side-effect.** FU-1 installed Ansible (~464 MB with deps) system-wide via
+  Homebrew; the FU-2 container approach would have kept that off the host.
+
+Net: FU-2 stays a **legitimate optional follow-on** whose value is
+bounded-execution *consistency* + agent/CI re-verifiability, not "getting green"
+(FU-1 already did that). Revisit if in-container Ansible testing is wanted.
 
 ## Provenance
 
