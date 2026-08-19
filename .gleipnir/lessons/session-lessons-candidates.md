@@ -447,6 +447,16 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C29 — a test that must stage a secret-matching fixture will trip the commit-time secret-scan on the test file itself; assemble the matching literal at runtime so no complete pattern lives in the tracked source
+
+**Observed (this session, wiring config-scan into `hooks/pre-commit`):** `tests/test_precommit_hook.sh` needed a fixture that matches the secret-scan's AWS-key pattern (`AKIA[0-9A-Z]{16}`) to prove ST-6/ST-7 (secret-scan still fires). It contained the literal `AKIA` + a 16-char run. When git-ops tried to commit the test file, the broker's always-on secret-scan **correctly refused** — the very guard the test exercises caught the fixture literal in the tracked source. git-ops correctly stopped rather than `--no-verify`ing (the instruction/discipline held). First fix (runtime assembly `fake_key="AKIA$(printf '...')"`) was itself defeated by an **inline comment** that repeated the full literal — a second, subtler instance of the same trap. Final fix: assemble at runtime AND keep no complete matching substring anywhere in the file (comments included). Verified: source clean against all secret-scan patterns; the runtime-assembled fixture still triggers detection so ST-6/ST-7 stay valid.
+
+**Proposed lesson:** (a) Any test that must feed a secret-scanner a *matching* fixture cannot store that fixture as a verbatim literal in a tracked file — the commit-time secret-scan will (correctly) block the test file itself. Assemble the matching string at runtime from fragments so the *generated* fixture matches but no complete matching substring appears in the source. (b) The trap extends to **comments and docstrings**, not just code — a "for clarity" comment repeating the literal reintroduces the match; scan the whole file (all patterns), not just the code lines, before committing. (c) This is a healthy signal, not a nuisance: a secret-scan that catches its own test fixture is working; the fix is to make the fixture obviously-synthetic-at-runtime, never to `--no-verify` around it (that would train the reflex the guard exists to prevent). (d) Verification pattern: after the fix, grep the source against the *full* scanner pattern set (expect no match) AND confirm the runtime-generated fixture still matches (expect match) — both checks, or you've either broken the test or left a landmine.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-19 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
