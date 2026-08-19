@@ -1,0 +1,70 @@
+---
+# ansible/group_vars/all.yml
+#
+# repo path, agent account NAME, key path, and the 8-entry enforcement-path
+# mirror of src/gleipnir/preflight/boundary.py's ENFORCEMENT_PATHS
+# (lines 168-222). Per P3/BC-6: NO numeric uid/gid appear here, or anywhere
+# else in this playbook -- those are READ at play-start from
+# .gleipnir/agent-identity.env (the single source of truth this playbook,
+# bin/gleipnir-launch, and bin/gleipnir-preflight all consume identically).
+#
+# `ansible/tests/layer1-static.sh`'s AC-mirror / AC-nolit checks assert this
+# file honours both invariants; keep this file and boundary.py's LOCKED
+# tuple in lockstep (BC-1: mechanise, never re-author).
+
+# Default assumes the playbook is run from a checkout with `ansible/` at the
+# repo root (the normal case: `ansible-playbook -i inventory.ini site.yml`
+# from inside `ansible/`, or with explicit `-i ansible/inventory.ini
+# ansible/site.yml` from the repo root). Override with `-e repo=...` to
+# point at a disposable fixture tree in tests (see ansible/tests/).
+repo: "{{ playbook_dir }}/.."
+
+# The dedicated non-login agent account name (act 1/3). The NUMERIC uid/gid
+# for this account are read from agent-identity.env at play start, never
+# declared here.
+agent_account_name: gleipniragent
+
+# The G-3 marker key, relative to {{ repo }}/.gleipnir (act 5 / AC-4).
+marker_key_relpath: keys/marker.key
+
+# Tier-0/1/2 dirs the agent account may WRITE (act 3) -- everything else
+# under .gleipnir/ stays read-only to the agent uid.
+tier012_writable_dirs:
+  - .gleipnir/plans
+  - .gleipnir/var/tmp
+  - .gleipnir/logs
+  - .gleipnir/memory
+  - .gleipnir/lessons
+
+# The 8 LOCKED enforcement paths (act 4) -- SAME set, SAME order, as
+# src/gleipnir/preflight/boundary.py:168-222's ENFORCEMENT_PATHS tuple.
+# `relative` is the path relative to {{ repo }}/.gleipnir, matching
+# boundary.py's own `relative` field verbatim. Only `plugins` carries
+# `tolerate_absent: true` (boundary.py's EnforcementPath(..., tolerate_absent=True)
+# on plugins/** alone) -- every other path missing entirely is a real
+# failure, not a tolerated absence (E-2/BC-1).
+enforcement_paths:
+  - label: "agents/*.md"
+    relative: agents
+    tolerate_absent: false
+  - label: "stage-role-map.md"
+    relative: stage-role-map.md
+    tolerate_absent: false
+  - label: "decisions/**"
+    relative: decisions
+    tolerate_absent: false
+  - label: "goals/**"
+    relative: goals
+    tolerate_absent: false
+  - label: "keys/**"
+    relative: keys
+    tolerate_absent: false
+  - label: "plugins/**"
+    relative: plugins
+    tolerate_absent: true
+  - label: "sandbox/**"
+    relative: sandbox
+    tolerate_absent: false
+  - label: "AGENTS.md"
+    relative: AGENTS.md
+    tolerate_absent: false

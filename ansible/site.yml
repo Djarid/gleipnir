@@ -1,0 +1,252 @@
+---
+# ansible/site.yml
+#
+# The S-2 caged-mode host setup, mechanised: applies acts (1)-(5) of
+# ../.gleipnir/plans/s2-activation-control-proposal.md, installs the act-6
+# wrapper's perms, and ends with the AC-4 assert -- a FAILING assertion if
+# the caged boundary did not genuinely close (BC-7). Caged ENTRY
+# (`sudo bin/gleipnir-launch`) is a SEPARATE, later, explicit operator act;
+# this playbook never performs it and never can (D2/BC-7).
+#
+# Authoritative sources this mechanises, never re-authors (BC-1):
+#   - acts 1-6:            ../.gleipnir/plans/s2-activation-control-proposal.md
+#   - the 8 enforcement
+#     paths:                src/gleipnir/preflight/boundary.py:168-222
+#   - the converged
+#     decision + BC-1..7:   ../.gleipnir/decisions/s2-caged-ansible.md
+#   - this plan's Assemble
+#     order / Trace:        ../.gleipnir/plans/s2-caged-ansible.md
+#
+# Run (operator, real box, under sudo so acts 1/3/5/6 can chown/create):
+#   sudo ansible-playbook -i inventory.ini site.yml
+#
+# D4: this file is authored-but-not-yet-executed -- Ansible is not
+# installed on the box this was written on. See ansible/tests/README.md.
+
+- name: S-2 caged-mode host setup (acts 1-6 + AC-4 assert)
+  hosts: local
+  connection: local
+  gather_facts: true   # needed as a fallback for ansible_user_id (E-5)
+
+  pre_tasks:
+    # --- Defense-in-depth: refuse to run with an empty/unset `repo` -------
+    # Every recursive perm task (acts 3/4/5/6) is scoped to `{{ repo }}`.
+    # An empty or unset `repo` would render those paths as `/.gleipnir/...`
+    # etc. The `ansible.builtin.file` module already rejects an empty `path`,
+    # and the identity-file stat/fail below would halt an implausible path --
+    # but neither is an EXPLICIT guard on `repo` itself. This assert makes the
+    # invariant load-bearing and first: no destructive act runs unless `repo`
+    # is a defined, non-empty, absolute path. (Quality-review hardening item.)
+    - name: "pre: refuse to run unless repo is a defined, non-empty, absolute path"
+      ansible.builtin.assert:
+        that:
+          - repo is defined
+          - (repo | string | length) > 0
+          - (repo | string) is match('^/')
+        fail_msg: >-
+          `repo` must be a defined, non-empty, absolute path (it scopes every
+          recursive chmod/chown in this playbook). Got: '{{ repo | default('') }}'.
+        quiet: true
+      tags: [always]
+
+    # --- E-5: resolve the real operator, not root -------------------------
+    # Run under `sudo ansible-playbook`, the WHOLE process is already root,
+    # so a `command: id -un` task would report "root", not the login user
+    # who should own the tree. `sudo` sets $SUDO_USER for the process it
+    # launches, so prefer that; fall back to the gathered ansible_user_id
+    # fact when not sudo-invoked (e.g. the unprivileged fixture tests in
+    # ansible/tests/, which never use sudo).
+    - name: "pre: resolve the invoking operator (not root) for chown targets (E-5)"
+      ansible.builtin.set_fact:
+        operator: "{{ lookup('ansible.builtin.env', 'SUDO_USER') | default(ansible_user_id, true) }}"
+      tags: [always]
+
+    # --- P3/E-6: agent-identity.env is the single source of truth --------
+    - name: "pre: confirm agent-identity.env is present (P3)"
+      ansible.builtin.stat:
+        path: "{{ repo }}/.gleipnir/agent-identity.env"
+      register: identity_stat
+      tags: [always]
+
+    - name: "pre: fail fast if agent-identity.env is missing (E-6)"
+      ansible.builtin.fail:
+        msg: >-
+          {{ repo }}/.gleipnir/agent-identity.env not found. This playbook
+          reads the agent uid/gid from it (P3) and deliberately does NOT
+          bootstrap a numeric uid/gid itself -- that would reintroduce a
+          hardcoded-uid literal this playbook is required to avoid
+          (AC-nolit). Run act (2) of s2-activation-control-proposal.md by
+          hand first, or restore the file, then re-run.
+      when: not identity_stat.stat.exists
+      tags: [always]
+
+    - name: "pre: read agent-identity.env content (P3)"
+      ansible.builtin.slurp:
+        src: "{{ repo }}/.gleipnir/agent-identity.env"
+      register: identity_slurp
+      tags: [always]
+
+    - name: "pre: parse GLEIPNIR_AGENT_UID / GLEIPNIR_AGENT_GID (single source of truth, P3)"
+      ansible.builtin.set_fact:
+        agent_uid: "{{ (identity_slurp.content | b64decode) | regex_search('GLEIPNIR_AGENT_UID=([0-9]+)', '\\1') | first }}"
+        agent_gid: "{{ (identity_slurp.content | b64decode) | regex_search('GLEIPNIR_AGENT_GID=([0-9]+)', '\\1') | first }}"
+      tags: [always]
+
+  tasks:
+    # =======================================================================
+    # act 1 -- dedicated agent uid/gid (macOS dscl/sysadminctl).
+    # `command:`, not ansible.builtin.user (BC-5): unreliable on Darwin for
+    # a non-login service account. Query-then-when guard (no `creates` file
+    # exists for a dscl account) -- E-1 idempotency.
+    # =======================================================================
+    - name: "act1: query existing agent account (dscl) -- idempotency guard (P4/BC-5/E-1)"
+      ansible.builtin.command: dscl . -read /Users/{{ agent_account_name }} UniqueID
+      register: dscl_query
+      changed_when: false
+      failed_when: false
+      when: not ansible_check_mode   # E-8: command: tasks don't support --check
+      tags: [act1]
+
+    - name: "act1: create the dedicated agent group record (dscl)"
+      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }}
+      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      tags: [act1, user_create, destructive]
+
+    - name: "act1: set the agent group PrimaryGroupID"
+      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} PrimaryGroupID {{ agent_gid }}
+      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      tags: [act1, user_create, destructive]
+
+    - name: "act1: set the agent group RecordName"
+      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} RecordName {{ agent_account_name }}
+      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      tags: [act1, user_create, destructive]
+
+    - name: "act1: create the non-login agent user (sysadminctl)"
+      ansible.builtin.command: >-
+        sysadminctl -addUser {{ agent_account_name }} -UID {{ agent_uid }} -GID {{ agent_gid }}
+        -fullName "Gleipnir Agent" -home /var/empty -shell /usr/bin/false
+      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      tags: [act1, user_create, destructive]
+
+    # =======================================================================
+    # act 3 -- ownership / group layout. `ansible.builtin.file` with
+    # symbolic modes + recurse (P5) -- idempotent, reports real changed
+    # state (drives AC-idem), unlike `command: chown -R`/`chmod -R`.
+    # =======================================================================
+    - name: "act3: operator owns the entire repo tree"
+      ansible.builtin.file:
+        path: "{{ repo }}"
+        owner: "{{ operator }}"
+        group: staff
+        recurse: yes
+      tags: [act3]
+
+    - name: "act3: source + .gleipnir readable to all (a+rX)"
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "a+rX"
+        recurse: yes
+      loop:
+        - "{{ repo }}/src"
+        - "{{ repo }}/.gleipnir"
+      tags: [act3]
+
+    - name: "act3: Tier-0/1/2 writable dirs -- chgrp agent + g+w"
+      ansible.builtin.file:
+        path: "{{ repo }}/{{ item }}"
+        group: "{{ agent_account_name }}"
+        mode: "g+w"
+        recurse: yes
+      loop: "{{ tier012_writable_dirs }}"
+      tags: [act3, act3_agent_group]
+
+    # =======================================================================
+    # act 4 -- harden the 8 LOCKED enforcement paths OS-read-only to the
+    # agent uid (a+rX,go-w: read+traverse for all, no group/other write).
+    # plugins/ tolerates absence (E-2/BC-1) via a per-item ignore_errors,
+    # mirroring the proposal's `|| true` for that one path.
+    # =======================================================================
+    - name: "act4: harden the 8 LOCKED enforcement paths (a+rX,go-w) -- plugins/ absence-tolerant (BC-1/E-2)"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir/{{ item.relative }}"
+        mode: "a+rX,go-w"
+        recurse: yes
+      loop: "{{ enforcement_paths }}"
+      loop_control:
+        label: "{{ item.label }}"
+      ignore_errors: "{{ item.tolerate_absent | default(false) }}"
+      tags: [act4]
+
+    # =======================================================================
+    # act 5 -- G-3 key RO_AND_UNREADABLE. MUST run AFTER act4 (P6/BC-2): the
+    # act-4 recurse above passes over .gleipnir/keys/ too and would leave a
+    # 600 key group/other-readable again if act5 ran first. Unconditional
+    # in BOTH modes (BC-3) -- never gated on mode/teardown.
+    # =======================================================================
+    - name: "act5: verify the G-3 key exists before locking it (E-7)"
+      ansible.builtin.stat:
+        path: "{{ repo }}/.gleipnir/{{ marker_key_relpath }}"
+      register: marker_key_stat
+      tags: [act5]
+
+    - name: "act5: fail fast if the G-3 key is missing (E-7)"
+      ansible.builtin.fail:
+        msg: "G-3 marker key not found at {{ repo }}/.gleipnir/{{ marker_key_relpath }} -- generate it before running this playbook."
+      when: not marker_key_stat.stat.exists
+      tags: [act5]
+
+    - name: "act5: lock the G-3 key RO_AND_UNREADABLE (mode 600) -- MUST run after act4 (BC-2/P6); unconditional floor in both modes (BC-3)"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir/{{ marker_key_relpath }}"
+        owner: "{{ operator }}"
+        group: staff
+        mode: "0600"
+        state: file
+      tags: [act5]
+
+    # =======================================================================
+    # act 6 -- install the launch wrapper's perms/ownership. Does NOT author
+    # or rewrite bin/gleipnir-launch (already written+reviewed) -- only
+    # installs perms, matching the plan's "installs perms/ownership, does
+    # not author the file."
+    # =======================================================================
+    - name: "act6: install bin/gleipnir-launch perms/ownership (0755, operator:staff)"
+      ansible.builtin.file:
+        path: "{{ repo }}/bin/gleipnir-launch"
+        owner: "{{ operator }}"
+        group: staff
+        mode: "0755"
+        state: file
+      tags: [act6]
+
+    # =======================================================================
+    # AC-4 -- the FAILING assertion (BC-7): the authoritative caged signal
+    # is only ever the preflight verdict, never playbook success. The
+    # `environment:` fix is REQUIRED (BC-4/E-4): sudo's env_reset strips
+    # GLEIPNIR_MARKER_KEY_FILE from the interactive shell before this
+    # process runs, so it must be re-set explicitly at the task level.
+    # =======================================================================
+    - name: "AC-4: run the caged preflight (fails closed unless CLOSED) -- environment fix survives sudo (BC-4/E-4)"
+      ansible.builtin.command:
+        cmd: >-
+          {{ repo }}/bin/gleipnir-preflight
+          --agent-uid {{ agent_uid }} --agent-gid {{ agent_gid }} --mode caged
+      environment:
+        GLEIPNIR_MARKER_KEY_FILE: "{{ repo }}/.gleipnir/{{ marker_key_relpath }}"
+      register: ac4_preflight
+      changed_when: false
+      failed_when: false
+      when: not ansible_check_mode   # E-8: command: tasks don't support --check
+      tags: [ac4]
+
+    - name: "AC-4: assert the caged boundary is genuinely CLOSED (rc == 0) -- never a false green (BC-7)"
+      ansible.builtin.assert:
+        that:
+          - (ac4_preflight.rc | default(1)) == 0
+        fail_msg: >-
+          S-2 caged boundary NOT closed (preflight rc={{ ac4_preflight.rc | default('N/A -- check mode') }}):
+          {{ ac4_preflight.stdout | default('') }} {{ ac4_preflight.stderr | default('') }}
+        success_msg: "AC-4 passed: S-2 caged boundary CLOSED (preflight rc=0)."
+      when: not ansible_check_mode   # E-8: mirrors the command task's guard above
+      tags: [ac4]
