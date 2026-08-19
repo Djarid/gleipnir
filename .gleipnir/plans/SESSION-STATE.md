@@ -7,7 +7,7 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
-**OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED + CONFIG-SCAN VCS HOOK WIRED + L-C29 RECORDED:**
+**OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED + CONFIG-SCAN FULLY WIRED (broker + VCS-hook + CI) + L-C29 RECORDED:**
 
 **OI-1 RESOLVED** (commits `b1afa6f` + `be20988`): `bin/gleipnir-launch` wrapper
 now correctly passes `--mode caged` on every invocation, genuinely enforcing the
@@ -27,6 +27,31 @@ which can't run sh; corrected to build-session-executes) → test/code → quali
 + negative-check attestation + cognition honour ([D]-backed by 12/12 green) → git. **Decision record 
 `config-scoping-preflight.md` status corrected** (stale "NOT YET WIRED" → "wired on broker + 
 VCS-hook paths; CI deferred"). Plan: `plans/config-scan-precommit-hook.md`.
+
+**CONFIG-SCAN CI GATE WIRED** (commit `a7e4497`): The final enforcement path closed — 
+added `.github/workflows/config-scan.yml`, the repo's FIRST-EVER CI workflow. Runs 
+`bin/gleipnir-preflight config-scan` on `push`→`main` and on `pull_request`, as a THIRD 
+enforcement path independent of local hook state (after git-guard.ts broker plugin and 
+hooks/pre-commit VCS hook). config-scan now enforced on **all three paths: broker write + 
+local commit + CI.** **Exit-2 divergence (deliberate, documented):** CI hard-fails on exit 2 
+(`PROCEED_UNCLOSED`), diverging from git-guard.ts/hooks/pre-commit warn-and-proceed contract, 
+because CI is the authoritative non-interactive gate with no live operator behind `--override-ack`. 
+Exit 0/1/else mirrored unchanged. Workflow hardened: `permissions: contents: read` only 
+(least privilege, fork-PR safe); bare venv, no pip install (stdlib-only core); actions pinned 
+by full commit SHA. **Full hardened 8-stage pipeline:** brainstorm (2 material decisions surfaced 
++ converged) → plan → spec-review PASS (caught+corrected a rationale defect: plan falsely claimed 
+no roster agent can write `.github/**`, but gleipnir-code's edit grant does NOT exclude `.github/**` 
+— only `.gleipnir/decisions/**` genuinely has no roster path via L-C27 gap) → test PASS (static 
+YAML validation) → code (gleipnir-code wrote the workflow; operator applied Tier-3 decision-record 
+edit in build mode) → quality GO (blast-radius PASS incl. SHA pin verification; cognition honour-check 
+HONOURED; negative-check attestation confirmed) → git → gate. **Decision record `config-scoping-preflight.md` 
+status flipped** (from "CI deferred" → "CI WIRED on all three paths"). Plan: `plans/config-scan-ci-wiring.md`.
+
+**Latent observation (not fixing this session):** gleipnir-code's `edit` grant is `"*": allow` 
+minus denies for `.gleipnir/**`, `.git/**`, `src/gleipnir/preflight/**` only — it does NOT exclude 
+`.github/**`. This means gleipnir-code can technically write CI workflow files. Worth a future `tier3-coach` 
+look (whether to tighten that grant), but **explicitly OUT OF SCOPE** for this task. Recorded as a 
+background thread.
 
 **L-C29 RECORDED** (commit `072f93d`): A test that must stage a secret-matching fixture will 
 trip the commit-time secret-scan on the test file itself — assemble the matching literal at 
@@ -60,7 +85,7 @@ guard is live.
 - **FU-3 DONE (`9204129`):** `decisions/go-caged-runbook.md` Step 1 prose updated to prefer the Ansible playbook (`sudo ansible-playbook -i ansible/inventory.ini ansible/site.yml`) while retaining the six manual acts as authoritative spec + fallback. Citations to D5/D6 added. Light-path spec-review PASS. Does not weaken AC-4 authority (caged entry stays explicit operator act).
 - **FU-4 DEFERRED** (operator decision): `bin/gleipnir-launch` install to 0755 + relaunch caged. Available whenever the operator wants to operate caged; playbook's act-6 installs it. This session stayed uncaged (jasonh/501; box OS-level caged but not running in-caged).
 
-**Commits this session (11 total; verified against disk; all pushed to origin/main):**
+**Commits this session (12 total; verified against disk; all pushed to origin/main):**
 1. `b1afa6f` — OI-1 FIX: bin/gleipnir-launch now passes --mode caged
 2. `be20988` — Stale go-caged refs cleared (runbook + skill)
 3. `0745b85` — L-C27 recorded
@@ -72,8 +97,9 @@ guard is live.
 9. `9204129` — FU-3: go-caged-runbook Step 1 updated to reference Ansible playbook as preferred delivery
 10. `608899e` — Config-scan wired into hooks/pre-commit: ALWAYS-ON VCS gate, fail-closed, mirrors git-guard contract (hardened pipeline: spec-conform PASS + quality blast-radius PASS + attestation)
 11. `072f93d` — L-C29 recorded: test fixture assembly at runtime to avoid tracked secret pattern; broker secret-scan caught attempt, proving live-end-to-end validation
+12. `a7e4497` — CONFIG-SCAN CI WIRED: added `.github/workflows/config-scan.yml` (push/PR gate); full hardened pipeline; decision record status updated (broker + VCS-hook + CI all live now)
 
-**HEAD at `072f93d`; working tree clean.**
+**HEAD at `a7e4497`; working tree clean.**
 
 **Ansible environment:** ansible-core 2.21.3, ansible-lint 26.8.0 (installed this session; available for future Ansible work + optional FU-2).
 
@@ -112,7 +138,7 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
    - **NOW GENUINELY GREEN:** syntax-check + ansible-lint (0 fail, production-grade) + `--check-mutates-nothing` + idempotency (2nd run `changed=0`) + AC-4-fail path — **ALL PASS** ([D]-verified by live executed harness, not narrative). **D3/D4 machinery working as designed: first real run exposed correctness gaps, machinery proved idempotency rigorously.**
    - **Hardened quality re-review (post-execution):** spec-conform PASS + blast-radius PASS + negative-check attestation (attested_by≠author) + cognition honour ([D]-backed by live green run) — **GO.**
 - **FU-3 go-caged-runbook update (commit `9204129`):** `decisions/go-caged-runbook.md` Step 1 prose updated to prefer the Ansible playbook (`sudo ansible-playbook -i ansible/inventory.ini ansible/site.yml`) while retaining the six manual acts as authoritative spec + fallback. Citations to D5/D6 added. Light-path spec-review PASS. Does not weaken AC-4 authority (caged entry stays explicit operator act).
-- **CONFIG-SCAN VCS HOOK WIRED (commits `608899e` + `072f93d`)** — Closed the asymmetry: config-scan was broker-only (git-guard.ts); now `hooks/pre-commit` runs it ALWAYS-ON on every commit (human or agent; broker cannot `--no-verify`), fail-closed on REFUSE or can't-run, mirroring git-guard exit contract (0 proceed / 1 block / 2 warn+proceed / else+can't-run block). Secret-scan preserved byte-for-byte. New `tests/test_precommit_hook.sh` (12-case host shell test, temp-repo+stub-CLI, no real-tree mutation) — **ALL 12 PASS incl. live-repo self-pass** (no lockout). Full hardened pipeline: plan → spec-review PASS (caught+fixed feasibility defect: test-execution was mis-routed to gleipnir-code which denies `sh*`/`bash*`; corrected to build-session-executes, which holds `bash`) → test/code (gleipnir-code authored; build-session ran test) → quality blast-radius PASS + negative-check attestation + cognition honour ([D]-backed by 12/12 green tests + live-repo pass) → git. **Decision record `config-scoping-preflight.md` status corrected** (stale "NOT YET WIRED" → "wired on broker + VCS-hook paths; CI deferred").
+- **CONFIG-SCAN VCS HOOK + CI GATE WIRED (commits `608899e`, `072f93d`, `a7e4497`)** — Closed the asymmetry: config-scan was broker-only (git-guard.ts); now `hooks/pre-commit` runs it ALWAYS-ON on every commit (human or agent; broker cannot `--no-verify`), fail-closed on REFUSE or can't-run, mirroring git-guard exit contract (0 proceed / 1 block / 2 warn+proceed / else+can't-run block). Secret-scan preserved byte-for-byte. New `tests/test_precommit_hook.sh` (12-case host shell test, temp-repo+stub-CLI, no real-tree mutation) — **ALL 12 PASS incl. live-repo self-pass** (no lockout). Full hardened pipeline: plan → spec-review PASS (caught+fixed feasibility defect: test-execution was mis-routed to gleipnir-code which denies `sh*`/`bash*`; corrected to build-session-executes, which holds `bash`) → test/code (gleipnir-code authored; build-session ran test) → quality blast-radius PASS + negative-check attestation + cognition honour ([D]-backed by 12/12 green tests + live-repo pass) → git. Added `.github/workflows/config-scan.yml` (push/PR gate, third enforcement path) with deliberate exit-2 hard-fail divergence from plugin/hook warn-and-proceed (durable home of divergence). Workflow hardened: `permissions: contents: read` only; stdlib-only venv; actions pinned by full SHA. **Full hardened 8-stage pipeline on CI plan:** brainstorm (2 converged decisions) → plan → spec-review PASS (caught+corrected rationale defect re: gleipnir-code `.github/**` grant scope) → test PASS (static YAML validation) → code → quality GO (SHA pins verified) → git → gate. **Decision record `config-scoping-preflight.md` status updated** (stale "NOT YET WIRED" → "wired on broker + VCS-hook + CI paths; all three live now"). Plans: `config-scan-precommit-hook.md` + `config-scan-ci-wiring.md`.
 - **Lesson L-C27 recorded (commit `0745b85`)** — operating-posture.md grants instructed-agent Tier-3 writes under uncaged default, but NO roster agent materialises that grant (orchestrator denies edit; plan/brainstorm only plans/**; code denies .gleipnir/**; session-scribe only Tier-0 + one named Tier-2 file). Corrects earlier inaccuracy.
 - **Lesson L-C28 recorded (commit `35493a9`)** — a ready-to-apply OS/host proposal that creates a host-local file must specify that file's gitignore treatment. Omitting it leaves an accidental-commit gap (observed this session with agent-identity.env; retroactively gitignored in commit `1b4b2f2`). Now a recorded guardrail.
 - **Lesson L-C29 recorded (commit `072f93d`)** — A test that must stage a secret-matching fixture (e.g., AKIA-prefixed patterns) will trip the commit-time secret-scan on the test file itself — assemble the matching literal at runtime so no complete pattern lives in tracked source; never resort to `--no-verify`. **Surfaced live this session:** the broker secret-scan correctly REFUSED the first commit attempt on the test fixture when it contained a literal AWS-key pattern; fixed via runtime assembly. Good proof the guard is live and end-to-end validated.
@@ -125,13 +151,18 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 
 ## Open threads / next
 
-### ⭐ START HERE NEXT SESSION: OI-2 arc COMPLETE + CONFIG-SCAN HOOK WIRED — Optional follow-ups only
+### ⭐ START HERE NEXT SESSION: OI-2 arc COMPLETE + CONFIG-SCAN FULLY WIRED (all three paths: broker + VCS-hook + CI) — Optional follow-ups only
 
 **OI-2 is COMPLETE** (acts 1–5 verified at OS level; AC-4 GO; box is CAGED; playbook executed & proven green).
 **The Ansible/caged-mode arc is now CLOSED** (D4-FU-DONE; playbook working machinery; FU-1/FU-3 delivered).
-**CONFIG-SCAN is substantially WIRED** (broker path + VCS-hook path both live, tested, green); **CI path is the only deferred piece** (push/PR-time gate, independent of local hook state — a small optional follow-on, not blocking; local gates are sufficient for current workflow).
+**CONFIG-SCAN is FULLY WIRED** (broker path + VCS-hook path + CI path all live, tested, green). **All three enforcement paths operational** (git-guard.ts plugin on broker write + hooks/pre-commit on every commit + `.github/workflows/config-scan.yml` on push/PR).
 
 **Remaining optional follow-ups (not blocking; operator discretion):**
+
+**Config-scan CI branch-protection promotion (optional, post-validation)**
+- Rationale: once the CI workflow is observed green in production use, promote the `config-scan` check to a required status check in GitHub branch-protection settings.
+- **Not blocking:** config-scan is already running on push/PR; the branch-protection promotion is a convenience / enforced gate for the repo's main branch.
+- **Operator decision this session:** deferred; the CI workflow is live and can be observed for a few rounds before making it required.
 
 **FU-2 — (Optional) Build an `[profile.ansible]` sandbox image**
 - Rationale: hardened sandbox profile for running Ansible tests in-container (consistent with the rest of the S-2 test infrastructure).
@@ -149,7 +180,7 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 ---
 
 **Resumes to background threads** (lower-priority, multi-session backlog):
-- **Config-scan CI gate (optional follow-on):** config-scan now runs on broker + VCS-hook paths (both live, tested, green); CI path (push/PR-time, independent of local hooks) is deferred — small, self-contained follow-on once the framework is in stable use.
+- **Gleipnir-code edit-grant scope (tier3-coach candidates):** gleipnir-code's `edit` grant is `"*": allow` minus denies for `.gleipnir/**`, `.git/**`, `src/gleipnir/preflight/**` only — it does NOT exclude `.github/**`. So gleipnir-code can technically write CI workflow files. This was surfaced during the config-scan CI plan's spec-review (caught the defect in the plan's incorrect assertion). Worth a future `tier3-coach` look (whether to tighten that grant to explicitly exclude `.github/**`), but **explicitly OUT OF SCOPE** for this session. Recorded as a latent observation.
 - **G-4 remainder:** Seam 7 (live `tool.execute.after` hook); Observer + novelty-triage; Token provenance / cost tracking.
 - **E-1 credential-unreachability:** Argument-policy half closed; credential half still open (brokers co-located with env-injected tokens; S-2 necessary-but-not-sufficient).
 - **E-2 platform-webhook receiver:** no component home yet.
@@ -175,6 +206,8 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 
 ## Open seams (absorbed from old session-seams-ledger.md; NOT authoritative)
 
+**CONFIG-SCAN status THIS SESSION:** **FULLY WIRED on all three paths** — broker-plugin (git-guard.ts), VCS pre-commit hook (hooks/pre-commit), and CI (`.github/workflows/config-scan.yml`). All three live, tested, green. Exit-2 divergence (CI hard-fails vs. plugin/hook warn-and-proceed) is durable-recorded in decision-record. Optional follow-up: promote CI check to required status in GitHub branch-protection settings (post-validation).
+
 **S-2 status THIS SESSION:** Acts 1–5 VERIFIED; AC-4 boundary genuinely CLOSED; box CAGED at OS level. Ansible playbook codifies future re-setup (tested structure; tests EXECUTED & GREEN, D5/D6 defects found+fixed). Caged-mode arc COMPLETE (FU-1/FU-3 DONE; FU-2/FU-4 optional).
 
 - **S-2 follow-ups (optional, not blocking):** Hardened sandbox profile (FU-2, skipped this session); caged session execution (FU-4, optional).
@@ -186,6 +219,7 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 - E-1 credential-unreachability half (argument-policy closed; credential co-location remains).
 - E-2 platform-webhook receiver (no component home).
 - E-3 novelty-triage signal quality (Seam 7 + observer).
+- **Gleipnir-code edit-grant scope (tier3-coach candidates):** `.github/**` NOT excluded in current grant; may warrant tightening (explicit deny added) — flagged, not fixed this session.
 - G-4 remainder (Seam 7, observer, novelty-triage, cost tracking).
 - Engine hybrid-C per-stage escalation + G-5 engine full implementation.
 - Live TS `tool.execute.after` advance hook; real-CI attestation feeding `attempt_gate` / G-3.2.
