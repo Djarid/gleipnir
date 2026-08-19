@@ -3,14 +3,12 @@
 #
 # Runs all three test layers (see README.md) and prints one honest summary.
 #
-# D4 HONESTY LABEL: Ansible (ansible/ansible-playbook/ansible-lint) is NOT
-# installed on this box, and the S-2 sandbox has no [profile.ansible] (only
-# python/node/broker) -- so most of what this script runs will report SKIP,
-# not PASS, until the operator installs Ansible (brew/pipx) or a future
-# sandbox profile lands. This is authored-but-not-yet-executed, exactly as
-# converged in ../../.gleipnir/decisions/s2-caged-ansible.md D4. Do not
-# read a clean exit from this script as "the Ansible playbook was verified
-# green" -- read the SKIP/PASS/FAIL lines it prints.
+# STATUS (D4-FU done): this harness has been run and passes green with Ansible
+# installed (see ../../.gleipnir/decisions/s2-caged-ansible.md D4/D5/D6). It
+# still degrades honestly: on a box WITHOUT ansible/ansible-playbook/ansible-lint
+# (or with no [profile.ansible] sandbox), the layers that need the toolchain
+# print SKIP, not PASS -- so always read the SKIP/PASS/FAIL lines below, not just
+# the exit code. The banner further down fires only when the toolchain is absent.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)

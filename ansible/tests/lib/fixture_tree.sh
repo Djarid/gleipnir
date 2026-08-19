@@ -16,8 +16,16 @@
 
 # file_mode PATH -- portable (BSD/GNU) octal mode read, used by the layer-2
 # "mutated nothing" check and the layer-3 idempotency/AC-4-fail assertions.
+#
+# ORDER MATTERS (do not reorder to BSD-first): GNU coreutils `stat` (common on
+# a Homebrew/`coreutils` PATH) treats `-f` as "filesystem info", printing a
+# multi-line fsinfo dump to STDOUT and exiting 0 -- so a `stat -f ... || stat -c`
+# fallback NEVER reaches the `-c` branch and captures garbage as the "mode"
+# (observed: spurious layer-2 "mutation" + layer-3a false REFUSE). Trying the
+# GNU `-c '%a'` form FIRST is safe: on BSD `stat`, `-c` is unknown and exits
+# non-zero cleanly, so the `-f '%Lp'` (BSD octal) fallback fires correctly.
 file_mode() {
-    stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+    stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 
 # build_fixture_tree FIXTURE_DIR FIXTURES_SRC_DIR

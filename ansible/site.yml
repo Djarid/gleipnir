@@ -20,8 +20,9 @@
 # Run (operator, real box, under sudo so acts 1/3/5/6 can chown/create):
 #   sudo ansible-playbook -i inventory.ini site.yml
 #
-# D4: this file is authored-but-not-yet-executed -- Ansible is not
-# installed on the box this was written on. See ansible/tests/README.md.
+# D4-FU DONE: the 3-layer test harness has been run and passes green
+# (syntax-check, ansible-lint production profile, --check, idempotency
+# changed=0, AC-4-fail path). See ansible/tests/README.md.
 
 - name: S-2 caged-mode host setup (acts 1-6 + AC-4 assert)
   hosts: local
@@ -110,16 +111,23 @@
     - name: "act1: create the dedicated agent group record (dscl)"
       ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }}
       when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      # BUG-4 (ansible-lint no-changed-when): this task only ever runs when
+      # the query-then-when guard above (dscl_query.rc != 0) found the
+      # account absent, so every execution is a genuine creation -- true is
+      # the honest, not a suppressed, changed_when (E-1 idempotency signal).
+      changed_when: true
       tags: [act1, user_create, destructive]
 
     - name: "act1: set the agent group PrimaryGroupID"
       ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} PrimaryGroupID {{ agent_gid }}
       when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      changed_when: true
       tags: [act1, user_create, destructive]
 
     - name: "act1: set the agent group RecordName"
       ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} RecordName {{ agent_account_name }}
       when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      changed_when: true
       tags: [act1, user_create, destructive]
 
     - name: "act1: create the non-login agent user (sysadminctl)"
@@ -127,29 +135,75 @@
         sysadminctl -addUser {{ agent_account_name }} -UID {{ agent_uid }} -GID {{ agent_gid }}
         -fullName "Gleipnir Agent" -home /var/empty -shell /usr/bin/false
       when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
+      changed_when: true
       tags: [act1, user_create, destructive]
 
     # =======================================================================
     # act 3 -- ownership / group layout. `ansible.builtin.file` with
     # symbolic modes + recurse (P5) -- idempotent, reports real changed
     # state (drives AC-idem), unlike `command: chown -R`/`chmod -R`.
+    #
+    # D5 (non-overlapping layering, idempotency fix -- found by the first
+    # real test run): act-3's read grant is scoped to `src/` + the
+    # NON-enforcement parts of `.gleipnir/` ONLY. It deliberately does NOT
+    # recurse over `keys/` or the 8 LOCKED enforcement paths (`agents`,
+    # `stage-role-map.md`, `decisions`, `goals`, `keys`, `plugins`,
+    # `sandbox`, `AGENTS.md`) -- act-4 already grants the agent read there
+    # (`a+rX,go-w` on the 6 dirs + `0644` on the 2 files), and act-5 then
+    # locks the key `0600`. The OLD broad `chmod -R a+rX .gleipnir` re-ran
+    # every apply, re-loosening exactly what act-4/act-5 had just
+    # tightened -- so the SECOND run always reported `changed=2` and the
+    # key mode churned instead of converging. The fix makes each path
+    # owned by exactly ONE act: act-3 grants (a) a non-recursive `a+rX` on
+    # `.gleipnir/` itself (top-level traverse only, so the agent can
+    # descend into whatever act-4 opens up) and (b) a recursive `a+rX` on
+    # the specific non-enforcement, non-Tier-0/1/2 subtrees named in
+    # `non_enforcement_readable_dirs` (`skills/`, `policy/`) -- never
+    # `keys/`, never the enforcement subtree. See
+    # ../.gleipnir/decisions/s2-caged-ansible.md D5.
     # =======================================================================
     - name: "act3: operator owns the entire repo tree"
       ansible.builtin.file:
         path: "{{ repo }}"
         owner: "{{ operator }}"
         group: staff
-        recurse: yes
+        recurse: true
       tags: [act3]
 
-    - name: "act3: source + .gleipnir readable to all (a+rX)"
+    - name: "act3: src/ readable to all (a+rX, recurse) -- unrelated to the enforcement-subtree overlap, unchanged by D5"
       ansible.builtin.file:
-        path: "{{ item }}"
+        path: "{{ repo }}/src"
         mode: "a+rX"
-        recurse: yes
-      loop:
-        - "{{ repo }}/src"
-        - "{{ repo }}/.gleipnir"
+        recurse: true
+      tags: [act3]
+
+    - name: "act3: .gleipnir/ itself readable+traversable to all (a+rX, NO recurse) -- D5 non-overlapping layering"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir"
+        mode: "a+rX"
+        state: directory
+      tags: [act3]
+
+    - name: "act3: stat the non-enforcement .gleipnir/ readable subtrees (D5) -- existence probe, every entry tolerates absence"
+      ansible.builtin.stat:
+        path: "{{ repo }}/.gleipnir/{{ item }}"
+      loop: "{{ non_enforcement_readable_dirs }}"
+      register: act3_readable_dir_stat
+      tags: [act3]
+
+    # D5 detail (shortened task name below, kept under the lint line-length
+    # limit): recurses a+rX only over non_enforcement_readable_dirs
+    # (skills/, policy/, etc.) -- NEVER keys/ or the 8 enforcement paths;
+    # those remain act4/act5's exclusive domain.
+    - name: "act3: non-enforcement .gleipnir/ subtrees readable (a+rX, recurse) -- D5; NEVER keys/ or enforcement paths"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir/{{ item.item }}"
+        mode: "a+rX"
+        recurse: true
+      loop: "{{ act3_readable_dir_stat.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+      when: item.stat.exists
       tags: [act3]
 
     - name: "act3: Tier-0/1/2 writable dirs -- chgrp agent + g+w"
@@ -157,32 +211,154 @@
         path: "{{ repo }}/{{ item }}"
         group: "{{ agent_account_name }}"
         mode: "g+w"
-        recurse: yes
+        recurse: true
       loop: "{{ tier012_writable_dirs }}"
       tags: [act3, act3_agent_group]
 
     # =======================================================================
     # act 4 -- harden the 8 LOCKED enforcement paths OS-read-only to the
     # agent uid (a+rX,go-w: read+traverse for all, no group/other write).
-    # plugins/ tolerates absence (E-2/BC-1) via a per-item ignore_errors,
-    # mirroring the proposal's `|| true` for that one path.
+    #
+    # BUG-1 fix: `enforcement_paths` mixes two path SHAPES -- 6 directories
+    # (agents, decisions, goals, keys, plugins, sandbox) and 2 files
+    # (stage-role-map.md, AGENTS.md). `ansible.builtin.file` errors
+    # ("recurse option requires state to be 'directory'") if `recurse: yes`
+    # is applied to a file, so the single mixed-loop task this used to be is
+    # a real correctness defect. Split into the SAME two sub-passes the
+    # authoritative proposal (s2-activation-control-proposal.md act 4) uses:
+    #   (a) file-mode  -- stage-role-map.md, AGENTS.md, and each individual
+    #                      agents/*.md file: mode 0644, NO recurse.
+    #   (b) dir-recurse -- the 6 directory-kind paths: mode a+rX,go-w,
+    #                      recurse. plugins/ (and only plugins/, BC-1/E-2)
+    #                      tolerates absence.
+    #
+    # BUG-4 fix (ansible-lint `ignore-errors`): absence-tolerance for
+    # plugins/ is no longer a blanket `ignore_errors` (which would also
+    # swallow a genuine permission/IO error on that path, not just
+    # "absent"). Instead, a `stat` probe explicitly distinguishes "absent
+    # and tolerated" (skip the chmod, still a clean PASS) from "absent and
+    # NOT tolerated" (explicit `fail`, naming the path) from "present"
+    # (chmod runs normally) -- the honest, narrowly-scoped condition BUG-4
+    # asked for, not a suppression.
+    #
+    # D6 fix (idempotency, found by the first real test run): keys/ is
+    # special-cased OUT of the generic dir-recurse sub-pass below. A plain
+    # `a+rX,go-w` recurse over keys/ re-modes marker.key too, loosening the
+    # 600 key every run -- act5 then re-tightens it every run, so layer-3a
+    # never converges (changed=2 forever). keys/ now gets its OWN
+    # exclude-the-key treatment: the dir NODE is hardened directly
+    # (non-recursive), and `ansible.builtin.find` enumerates keys/'s
+    # CONTENTS excluding `*.key` so only non-key contents (README.md,
+    # future *.digest files) are hardened -- marker.key's mode is never
+    # touched here, staying act5's exclusive domain. The other 5
+    # directory-kind paths (agents, decisions, goals, plugins, sandbox)
+    # have no act5-owned file inside them, so they keep the plain
+    # recursive treatment unchanged. See
+    # ../.gleipnir/decisions/s2-caged-ansible.md D6.
     # =======================================================================
-    - name: "act4: harden the 8 LOCKED enforcement paths (a+rX,go-w) -- plugins/ absence-tolerant (BC-1/E-2)"
+    - name: "act4: harden the 8 LOCKED enforcement paths -- file-type sub-pass (stage-role-map.md, AGENTS.md), mode 0644, no recurse"
       ansible.builtin.file:
         path: "{{ repo }}/.gleipnir/{{ item.relative }}"
-        mode: "a+rX,go-w"
-        recurse: yes
-      loop: "{{ enforcement_paths }}"
+        mode: "0644"
+        state: file
+      loop: "{{ enforcement_paths | selectattr('kind', 'equalto', 'file') | list }}"
       loop_control:
         label: "{{ item.label }}"
-      ignore_errors: "{{ item.tolerate_absent | default(false) }}"
+      tags: [act4]
+
+    - name: "act4: harden the 8 LOCKED enforcement paths -- individual agent permission maps (agents/*.md), mode 0644, no recurse"
+      # `(enforcement_paths | first).relative` (== "agents") rather than a
+      # second hardcoded "agents" literal -- single-sourced from the same
+      # group_vars list AC-mirror checks (list order is LOCKED, so `first`
+      # is always the agents/*.md entry).
+      ansible.builtin.file:
+        path: "{{ item }}"
+        mode: "0644"
+        state: file
+      with_fileglob: "{{ repo }}/.gleipnir/{{ (enforcement_paths | first).relative }}/*.md"
+      tags: [act4]
+
+    - name: "act4: harden the 8 LOCKED enforcement paths -- stat the directory-type paths (existence probe for tolerate_absent handling)"
+      ansible.builtin.stat:
+        path: "{{ repo }}/.gleipnir/{{ item.relative }}"
+      loop: "{{ enforcement_paths | selectattr('kind', 'equalto', 'dir') | list }}"
+      loop_control:
+        label: "{{ item.label }}"
+      register: enforcement_dir_stat
+      tags: [act4]
+
+    - name: "act4: harden the 8 LOCKED enforcement paths -- fail fast on a missing, NOT absence-tolerant directory (BC-1/E-2)"
+      ansible.builtin.fail:
+        msg: >-
+          Enforcement path {{ item.item.label }}
+          ({{ repo }}/.gleipnir/{{ item.item.relative }}) is missing and is
+          NOT absence-tolerant (only plugins/ tolerates absence, BC-1/E-2).
+      loop: "{{ enforcement_dir_stat.results }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: not item.stat.exists and not (item.item.tolerate_absent | default(false))
+      tags: [act4]
+
+    - name: "act4: directory-type sub-pass (a+rX,go-w, recurse) for the 5 non-key dirs (BC-1/E-2); keys/ handled separately (D6)"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir/{{ item.item.relative }}"
+        mode: "a+rX,go-w"
+        recurse: true
+      loop: "{{ enforcement_dir_stat.results | rejectattr('item.relative', 'equalto', 'keys') | list }}"
+      loop_control:
+        label: "{{ item.item.label }}"
+      when: item.stat.exists
+      tags: [act4]
+
+    # -----------------------------------------------------------------------
+    # D6: keys/ exclude-the-key treatment (Option A, find-based). keys/ was
+    # rejected from the loop above; it is handled here on its own so
+    # marker.key's mode is NEVER touched by act4 -- act5 owns it exclusively
+    # (BC-2). Gated on the same stat entry the fail-fast task above already
+    # asserts is present-or-halted, so by this point keys/ is known to exist.
+    # -----------------------------------------------------------------------
+    - name: "act4: locate the keys/ stat entry for the exclude-the-key special-case (D6)"
+      ansible.builtin.set_fact:
+        keys_dir_stat_entry: "{{ (enforcement_dir_stat.results | selectattr('item.relative', 'equalto', 'keys') | list | first) }}"
+      tags: [act4]
+
+    - name: "act4: harden the keys/ DIRECTORY NODE itself (a+rX,go-w, NO recurse) -- D6"
+      ansible.builtin.file:
+        path: "{{ repo }}/.gleipnir/keys"
+        mode: "a+rX,go-w"
+        state: directory
+      when: keys_dir_stat_entry.stat.exists
+      tags: [act4]
+
+    - name: "act4: enumerate keys/ CONTENTS excluding *.key (D6) -- README.md, future *.digest files"
+      ansible.builtin.find:
+        paths: "{{ repo }}/.gleipnir/keys"
+        recurse: true
+        file_type: any
+        excludes: "*.key"
+      register: keys_non_key_contents
+      when: keys_dir_stat_entry.stat.exists
+      tags: [act4]
+
+    - name: "act4: harden keys/ non-key contents (a+rX,go-w) -- D6 excludes marker.key, act5 owns it exclusively (BC-2)"
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        mode: "a+rX,go-w"
+      loop: "{{ keys_non_key_contents.files | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      when: keys_dir_stat_entry.stat.exists
       tags: [act4]
 
     # =======================================================================
-    # act 5 -- G-3 key RO_AND_UNREADABLE. MUST run AFTER act4 (P6/BC-2): the
-    # act-4 recurse above passes over .gleipnir/keys/ too and would leave a
-    # 600 key group/other-readable again if act5 ran first. Unconditional
-    # in BOTH modes (BC-3) -- never gated on mode/teardown.
+    # act 5 -- G-3 key RO_AND_UNREADABLE. Kept running AFTER act4 (P6/BC-2)
+    # per the operator-preserved ordering, though D6 means act-4's keys/
+    # handling no longer touches marker.key AT ALL (the `find: excludes:
+    # *.key` special-case above skips it) -- so the two acts are now
+    # independent for the key file itself; the after-act4 placement is
+    # retained as defense-in-depth / least-surprise, not because act4 would
+    # still loosen the key if act5 ran first. Unconditional in BOTH modes
+    # (BC-3) -- never gated on mode/teardown.
     # =======================================================================
     - name: "act5: verify the G-3 key exists before locking it (E-7)"
       ansible.builtin.stat:

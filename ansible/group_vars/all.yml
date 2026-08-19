@@ -36,35 +36,75 @@ tier012_writable_dirs:
   - .gleipnir/memory
   - .gleipnir/lessons
 
+# D5 (non-overlapping layering, idempotency fix): the ONLY .gleipnir/
+# subtrees act-3 recurses `a+rX` into, besides the non-recursive top-level
+# traverse grant on .gleipnir/ itself. This list is deliberately DISJOINT
+# from `enforcement_paths` below and from `keys/` -- those are owned
+# exclusively by act-4/act-5. The first real test run showed that a broad
+# `chmod -R a+rX .gleipnir` (the proposal's literal form) OVERLAPS the
+# enforcement subtree act-4 (go-w) and the key act-5 (0600) then tighten,
+# so every re-run re-loosened what the later acts re-tightened -- forever
+# non-idempotent (see ../../.gleipnir/decisions/s2-caged-ansible.md D5).
+# Each entry TOLERATES ABSENCE (unlike `enforcement_paths`, where only
+# `plugins` tolerates absence) -- these are optional non-essential
+# subtrees, not LOCKED paths, so a missing one is not a failure, just
+# nothing to grant read on. Add future non-enforcement, non-Tier-0/1/2
+# readable subtrees here, never by re-broadening the .gleipnir/ recurse.
+non_enforcement_readable_dirs:
+  - skills
+  - policy
+
 # The 8 LOCKED enforcement paths (act 4) -- SAME set, SAME order, as
 # src/gleipnir/preflight/boundary.py:168-222's ENFORCEMENT_PATHS tuple.
 # `relative` is the path relative to {{ repo }}/.gleipnir, matching
-# boundary.py's own `relative` field verbatim. Only `plugins` carries
-# `tolerate_absent: true` (boundary.py's EnforcementPath(..., tolerate_absent=True)
-# on plugins/** alone) -- every other path missing entirely is a real
-# failure, not a tolerated absence (E-2/BC-1).
+# boundary.py's own `relative` field verbatim. Only the "plugins" item
+# carries a tolerate_absent value of true (mirroring boundary.py's
+# EnforcementPath(..., tolerate_absent=True) on plugins/** alone) --
+# every other path missing entirely is a real failure, not a tolerated
+# absence (E-2/BC-1).
+#
+# `kind: dir|file` (BUG-1, real-world Ansible act-4 correctness defect) --
+# two of the eight paths (stage-role-map.md, AGENTS.md) are FILES, not
+# directories, and `ansible.builtin.file` errors ("recurse option requires
+# state to be 'directory'") if `recurse: yes` is applied to a file. `kind`
+# lets site.yml's act-4 tasks split the single `enforcement_paths` list
+# (still ONE source of truth, still the same 8-entry/8-order set the
+# AC-mirror test checks) into a file-mode sub-pass (mode 0644, no recurse)
+# and a dir-recurse sub-pass (mode a+rX,go-w, recurse), matching
+# ../plans/s2-activation-control-proposal.md act (4)'s own
+# `chmod 644 agents/*.md stage-role-map.md AGENTS.md` (files) vs.
+# `chmod -R a+rX,go-w agents decisions goals keys sandbox plugins` (dirs)
+# split verbatim.
 enforcement_paths:
   - label: "agents/*.md"
     relative: agents
+    kind: dir
     tolerate_absent: false
   - label: "stage-role-map.md"
     relative: stage-role-map.md
+    kind: file
     tolerate_absent: false
   - label: "decisions/**"
     relative: decisions
+    kind: dir
     tolerate_absent: false
   - label: "goals/**"
     relative: goals
+    kind: dir
     tolerate_absent: false
   - label: "keys/**"
     relative: keys
+    kind: dir
     tolerate_absent: false
   - label: "plugins/**"
     relative: plugins
+    kind: dir
     tolerate_absent: true
   - label: "sandbox/**"
     relative: sandbox
+    kind: dir
     tolerate_absent: false
   - label: "AGENTS.md"
     relative: AGENTS.md
+    kind: file
     tolerate_absent: false

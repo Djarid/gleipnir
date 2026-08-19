@@ -106,11 +106,40 @@ fi
 
 # --- plugins/ is the ONLY tolerate_absent: true member (E-2/BC-1) --------
 echo "-- plugins/ is the sole tolerate_absent: true entry"
-tol_true_count=$(grep -c 'tolerate_absent: true' "$root/group_vars/all.yml" || true)
-if [ "${tol_true_count:-0}" -eq 1 ] && grep -B1 'tolerate_absent: true' "$root/group_vars/all.yml" | grep -q 'relative: plugins'; then
+# BUG-3 fix: a bare `grep -c 'tolerate_absent: true' group_vars/all.yml`
+# false-FAILs here because the file's own header commentary (a few lines
+# above the enforcement_paths list) MENTIONS that exact string in prose
+# ("Only `plugins` carries `tolerate_absent: true` (boundary.py's
+# EnforcementPath(..., tolerate_absent=True) ..."), so the naive substring
+# count is 2 (the comment + the one real YAML entry), not 1 -- a false FAIL
+# against genuinely-correct data. Parse the actual YAML list items instead
+# of grepping the whole file for a substring: walk item-by-item (each
+# delimited by a `- label:` line), track that item's `relative` and
+# `tolerate_absent` values, and only count real key: value lines (anchored
+# to start-of-line-after-whitespace, which no prose/comment line matches,
+# since every comment line here starts with `#`).
+tol_summary=$(awk '
+    function flush() {
+        if (rel != "") {
+            if (tol == "true") {
+                tol_true_count++
+                if (rel == "plugins") { plugins_match++ } else { other_rel = rel }
+            }
+        }
+    }
+    /^[[:blank:]]*-[[:blank:]]*label:/ { flush(); rel = ""; tol = "" }
+    /^[[:blank:]]*relative:[[:blank:]]*/ { rel = $2 }
+    /^[[:blank:]]*tolerate_absent:[[:blank:]]*true[[:blank:]]*$/ { tol = "true" }
+    END { flush(); printf "%d %d %s", tol_true_count + 0, plugins_match + 0, (other_rel == "" ? "-" : other_rel) }
+' "$root/group_vars/all.yml")
+tol_true_count=$(printf '%s' "$tol_summary" | cut -d' ' -f1)
+plugins_match=$(printf '%s' "$tol_summary" | cut -d' ' -f2)
+other_rel=$(printf '%s' "$tol_summary" | cut -d' ' -f3)
+
+if [ "${tol_true_count:-0}" -eq 1 ] && [ "${plugins_match:-0}" -eq 1 ]; then
     echo "PASS: exactly one tolerate_absent: true, on plugins"
 else
-    echo "FAIL: expected exactly one tolerate_absent: true entry, on the plugins item" >&2
+    echo "FAIL: expected exactly one tolerate_absent: true entry, on the plugins item (found count=${tol_true_count:-0}, non-plugins offender=${other_rel:-none})" >&2
     fail=1
 fi
 

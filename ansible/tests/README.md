@@ -6,18 +6,22 @@ per the D3 operator-converged requirement (all three layers, incl. layer-3
 fixture-tree idempotency) in
 [`../../.gleipnir/decisions/s2-caged-ansible.md`](../../.gleipnir/decisions/s2-caged-ansible.md).
 
-## Honesty label (D4) — READ THIS FIRST
+## Status (D4-FU done) — READ THIS FIRST
 
-**These tests are authored, not yet executed.** As of this session, this box
-has no `ansible`, `ansible-playbook`, or `ansible-lint` binary, and the
-S-2 sandbox (`bin/gleipnir-sandbox`) has no `[profile.ansible]` — only
-`python`/`node`/`broker`. D4 (the operator-converged decision) is: author the
-playbook and this harness now, test-first, and run them for the *first* time
-once Ansible is installed (`brew install ansible ansible-lint`, or via
-`pipx`). **Do not read a script in this directory exiting 0 as proof the
-Ansible playbook is correct** unless its own output shows `PASS` lines, not
-`SKIP` lines, for the checks that matter to you. `run.sh` prints an explicit
-banner naming the toolchain gap every time it runs.
+**These tests have been run and pass green.** They were authored test-first per
+the operator-converged D4 decision while Ansible was not yet installed; Ansible
+has since been installed (`brew install ansible ansible-lint`; ansible-core
+2.21.3, ansible-lint 26.8.0) and all three layers now PASS: syntax-check,
+ansible-lint (production profile, 0 failures), `--check`-mutates-nothing,
+idempotency (second run `changed=0`), and the AC-4-fail path. The first real run
+surfaced and fixed genuine defects (act-4 file/dir split; act-3 overlap = D5;
+act-4/act-5 key overlap = D6) — the value of actually running the harness.
+
+Re-run with `sh run.sh` (needs Ansible on PATH). **If you run this on a box
+WITHOUT Ansible, the layers that need it print `SKIP`, not `PASS`** — those SKIP
+branches remain, so the harness degrades honestly on a bare box; read the
+`PASS`/`SKIP`/`FAIL` lines, not just the exit code. `run.sh` prints a banner
+naming the toolchain gap only when Ansible is genuinely absent.
 
 One sub-part of layer 1 — the grep-based structural invariant checks
 (AC-order, AC-env, AC-nolit, AC-mirror) — needs **no** Ansible at all (pure

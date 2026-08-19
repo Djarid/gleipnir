@@ -12,16 +12,26 @@ and the plan
 the trusted operator under `sudo`, never by an in-framework agent, never
 under `.gleipnir/` (the very subtree it hardens).
 
-## Status: authored, not yet executed (D4)
+## Status: verified green (D4-FU done)
 
-Ansible is **not installed** on the box this was authored on, and the S-2
-sandbox has no `[profile.ansible]`. This playbook and its
-[3-layer test harness](tests/README.md) are authored test-first, per the
-operator-converged D4 decision, and are honestly labelled
-**authored-but-not-yet-executed** until the operator installs Ansible
-(`brew install ansible ansible-lint`, or `pipx`) and runs `ansible/tests/run.sh`
-for the first genuine pass. Do not treat this playbook's presence in the repo
-as evidence it has ever been run.
+Authored test-first per the operator-converged D4 decision. Ansible has since
+been installed (`brew install ansible ansible-lint`; ansible-core 2.21.3,
+ansible-lint 26.8.0) and the [3-layer test harness](tests/README.md) has been
+**run and passes green** — the D4 follow-up is complete. The first real run
+surfaced (and this session fixed) genuine defects the authored-but-unexecuted
+state had hidden: the act-4 file-vs-directory split, the act-3 enforcement-subtree
+overlap (D5), and the act-4/act-5 key-file overlap (D6). Current state:
+
+- `ansible-playbook --syntax-check`: PASS
+- `ansible-lint` (production profile): 0 failures
+- `--check` dry-run mutates nothing: PASS
+- idempotency (second run reports `changed=0`): PASS
+- AC-4-fail path (wrong key mode → REFUSE → run fails): PASS
+
+Re-run any time with `sh ansible/tests/run.sh` (requires Ansible on PATH). The
+genuine caged-CLOSED AC-4 pass against the *real* box still requires the actual
+`gleipnir-preflight` + a real uid; the fixture harness uses a stand-in preflight
+and a disposable tree (see [tests/README.md](tests/README.md)).
 
 ## What it does
 
@@ -32,15 +42,40 @@ genuinely closed:
 
 1. **act 1** — create the dedicated non-login agent uid/gid (`dscl`/
    `sysadminctl`), guarded so re-running is a no-op.
-2. **act 3** — ownership/group layout: operator owns the repo; source +
-   `.gleipnir` readable to all; Tier-0/1/2 dirs (`plans/`, `var/tmp/`,
-   `logs/`, `memory/`, `lessons/`) group-writable by the agent account.
+2. **act 3** — ownership/group layout: operator owns the repo; `src/`
+   readable to all; `.gleipnir/` itself readable+traversable (non-recursive)
+   plus its non-enforcement subtrees (`skills/`, `policy/` — each tolerates
+   absence) readable to all, recursively; Tier-0/1/2 dirs (`plans/`,
+   `var/tmp/`, `logs/`, `memory/`, `lessons/`) group-writable by the agent
+   account. **D5 (non-overlapping layering):** act-3 deliberately does
+   **not** recurse into `keys/` or the 8 LOCKED enforcement paths — those
+   are owned exclusively by act-4 (`a+rX,go-w`) and act-5 (key `0600`). The
+   first real test run showed a broad `chmod -R a+rX .gleipnir` re-loosens
+   what act-4/act-5 just tightened on every subsequent run (permanent
+   `changed=2` + key-mode churn); each path is now owned by exactly one act.
+   Do not "helpfully" re-broaden act-3's recurse back over `keys/` or the
+   enforcement subtree — see
+   [`../.gleipnir/decisions/s2-caged-ansible.md`](../.gleipnir/decisions/s2-caged-ansible.md)
+   D5.
 3. **act 4** — the 8 LOCKED enforcement paths
    (`src/gleipnir/preflight/boundary.py:168-222`) hardened `a+rX,go-w`;
-   `plugins/` tolerates absence.
-4. **act 5** — the G-3 key locked `0600`, owner-only — **after** act 4, so
-   the recursive pass above never re-loosens it. Unconditional in both
-   modes (never relaxed by any teardown path).
+   `plugins/` tolerates absence. **D6 (exclude-the-key, idempotency):**
+   `keys/` is special-cased out of the generic recursive pass. The
+   `keys/` directory node and its non-key contents (`README.md`, future
+   `*.digest` files — enumerated with `ansible.builtin.find`,
+   `excludes: '*.key'`) get `a+rX,go-w`; `marker.key` itself is **never**
+   touched by act-4. The first real test run showed the plain recursive
+   form re-loosened `marker.key` to `a+rX` on every apply, and act-5 then
+   re-tightened it every apply — permanent `changed=2`. Excluding `*.key`
+   from act-4's `keys/` treatment removes that churn; act-5 owns the key's
+   mode exclusively. See
+   [`../.gleipnir/decisions/s2-caged-ansible.md`](../.gleipnir/decisions/s2-caged-ansible.md)
+   D6.
+4. **act 5** — the G-3 key locked `0600`, owner-only — kept textually
+   **after** act 4 (least-surprise); since D6, act-4 no longer touches
+   `marker.key` at all, so the two acts are independent for the key file
+   itself. Unconditional in both modes (never relaxed by any teardown
+   path).
 5. **act 6** — installs `bin/gleipnir-launch`'s perms (`0755`,
    `operator:staff`). Does **not** author or rewrite the file — it is
    already written and reviewed.

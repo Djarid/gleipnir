@@ -41,7 +41,11 @@ if [ ! -f "$key" ]; then
     exit 1
 fi
 
-mode=$(stat -f '%Lp' "$key" 2>/dev/null || stat -c '%a' "$key" 2>/dev/null)
+# GNU-first, then BSD fallback (do NOT reorder): GNU coreutils `stat -f` prints
+# filesystem info to stdout and exits 0, so a BSD-first `|| ` fallback captures
+# garbage as the mode. GNU `-c '%a'` first is safe -- BSD `stat` rejects `-c`
+# non-zero, so the `-f '%Lp'` (BSD octal) fallback fires correctly there.
+mode=$(stat -c '%a' "$key" 2>/dev/null || stat -f '%Lp' "$key" 2>/dev/null)
 
 if [ "$mode" = "600" ]; then
     echo "fake-gleipnir-preflight: CLOSED (key mode 600) -- rc 0"

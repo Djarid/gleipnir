@@ -1,0 +1,31 @@
+---
+# ansible/.ansible-lint
+#
+# BUG-4 (ansible-lint policy): fix the real violations in code (see
+# site.yml/group_vars/all.yml -- no-changed-when, yaml[truthy], and the
+# `ignore-errors` restructure), and config-ignore only the ONE rule that
+# fires against a deliberate, reviewed convention rather than a real
+# defect:
+#
+#   name[casing] -- "names should start uppercase". Every task name in
+#   this playbook is deliberately prefixed with its act/stage marker in
+#   lowercase (`act1: ...`, `act3: ...`, `act4: ...`, `act5: ...`,
+#   `act6: ...`, `pre: ...`, `AC-4: ...`) because ansible/tests/*.sh's
+#   AC-order/AC-env grep-based structural checks match on those EXACT,
+#   lowercase-first task-name markers (see layer1-static.sh's
+#   `grep -n 'act4: harden the 8 LOCKED enforcement paths'` /
+#   `grep -n 'act5: lock the G-3 key'` / the AC-4 awk block). Renaming
+#   every task to start uppercase would either break that grep contract or
+#   require restating the act/stage marker twice (once for lint, once for
+#   the grep anchor) -- config-ignoring this one cosmetic rule is more
+#   honest than papering over it with a redundant naming scheme. This does
+#   NOT rename any task.
+#
+# `ignore-errors` is intentionally NOT in this list: the former
+# `ignore_errors: "{{ item.tolerate_absent | default(false) }}"` use on
+# act 4 (which this rule flagged) was replaced with an explicit
+# stat-then-fail/skip structure in site.yml, so there is no remaining
+# `ignore_errors:` use to suppress (BUG-4's "pick the honest one" ->
+# the code fix, not a config suppression).
+skip_list:
+  - name[casing]
