@@ -7,13 +7,33 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
-**OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED:**
+**OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED + CONFIG-SCAN VCS HOOK WIRED + L-C29 RECORDED:**
 
 **OI-1 RESOLVED** (commits `b1afa6f` + `be20988`): `bin/gleipnir-launch` wrapper
 now correctly passes `--mode caged` on every invocation, genuinely enforcing the
 fail-closed caged boundary gate. Stale cross-references in `decisions/go-caged-runbook.md`
 and `skills/go-caged/SKILL.md` cleared; both now state wrapper fail-closes while
 preserving AC-4 as the authoritative boundary-closure verification.
+
+**CONFIG-SCAN VCS HOOK WIRED** (commits `608899e` + `072f93d`): Closed a real asymmetry — 
+config-scan previously ran **only via broker write** (git-guard.ts plugin); now 
+`hooks/pre-commit` runs it ALWAYS-ON on every commit (human or agent; broker cannot 
+`--no-verify`), fail-closed on REFUSE or can't-run, mirroring git-guard exit contract 
+(0 proceed/1 block/2 warn+proceed/else+can't-run block). Secret-scan preserved byte-for-byte. 
+New `tests/test_precommit_hook.sh` (12-case host shell test, temp-repo+stub-CLI, no real-tree 
+mutation) — **ALL 12 PASS incl. live-repo self-pass** (no lockout). **Full hardened pipeline:** 
+plan → spec-review PASS (caught+fixed feasibility defect: test-execution was mis-routed to gleipnir-code 
+which can't run sh; corrected to build-session-executes) → test/code → quality blast-radius PASS 
++ negative-check attestation + cognition honour ([D]-backed by 12/12 green) → git. **Decision record 
+`config-scoping-preflight.md` status corrected** (stale "NOT YET WIRED" → "wired on broker + 
+VCS-hook paths; CI deferred"). Plan: `plans/config-scan-precommit-hook.md`.
+
+**L-C29 RECORDED** (commit `072f93d`): A test that must stage a secret-matching fixture will 
+trip the commit-time secret-scan on the test file itself — assemble the matching literal at 
+runtime so no complete AKIA-prefixed pattern lives in tracked source; never `--no-verify` around it. 
+**Surfaced live this session:** the broker secret-scan correctly REFUSED the first commit attempt 
+because the test fixture had a literal AWS-key pattern; fixed via runtime assembly. Good proof the 
+guard is live.
 
 **OI-2 COMPLETE** (this session):
 - **Acts 1–5 verified at OS level** (commits `1b4b2f2`, `35493a9`, `f33cee5`):
@@ -40,7 +60,7 @@ preserving AC-4 as the authoritative boundary-closure verification.
 - **FU-3 DONE (`9204129`):** `decisions/go-caged-runbook.md` Step 1 prose updated to prefer the Ansible playbook (`sudo ansible-playbook -i ansible/inventory.ini ansible/site.yml`) while retaining the six manual acts as authoritative spec + fallback. Citations to D5/D6 added. Light-path spec-review PASS. Does not weaken AC-4 authority (caged entry stays explicit operator act).
 - **FU-4 DEFERRED** (operator decision): `bin/gleipnir-launch` install to 0755 + relaunch caged. Available whenever the operator wants to operate caged; playbook's act-6 installs it. This session stayed uncaged (jasonh/501; box OS-level caged but not running in-caged).
 
-**Commits this session (8 total + 2 from prior FU setup; verified against disk; all pushed to origin/main):**
+**Commits this session (11 total; verified against disk; all pushed to origin/main):**
 1. `b1afa6f` — OI-1 FIX: bin/gleipnir-launch now passes --mode caged
 2. `be20988` — Stale go-caged refs cleared (runbook + skill)
 3. `0745b85` — L-C27 recorded
@@ -50,8 +70,10 @@ preserving AC-4 as the authoritative boundary-closure verification.
 7. `5539013` — Ansible playbook + 3-layer test harness (spec-conform PASS + blast-radius PASS + attestation; authored, not yet executed)
 8. `803855f` — Ansible installed + FU-1 HARNESS EXECUTED: real defects found & fixed; D5/D6 recorded; tests NOW GREEN ([D]-verified)
 9. `9204129` — FU-3: go-caged-runbook Step 1 updated to reference Ansible playbook as preferred delivery
+10. `608899e` — Config-scan wired into hooks/pre-commit: ALWAYS-ON VCS gate, fail-closed, mirrors git-guard contract (hardened pipeline: spec-conform PASS + quality blast-radius PASS + attestation)
+11. `072f93d` — L-C29 recorded: test fixture assembly at runtime to avoid tracked secret pattern; broker secret-scan caught attempt, proving live-end-to-end validation
 
-**HEAD at `9204129`; working tree clean.**
+**HEAD at `072f93d`; working tree clean.**
 
 **Ansible environment:** ansible-core 2.21.3, ansible-lint 26.8.0 (installed this session; available for future Ansible work + optional FU-2).
 
@@ -69,29 +91,31 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 - **Broker MCP servers** (gleipnir-git + gleipnir-pm; 4 tools each; single-holder scoping via Tier-3 frontmatter; git 99%, pm/mcp 97%, pm/platform 100% coverage; force-push structurally absent; hook-bypass flags refused).
 - **Git-enforcement (Approach C)** (plugin: config-scan on every git write; broker: secret-scan always-on pre-commit; layer split closes D9 compliance).
 - **Orchestrator context-cap** (Opus capped 250k / 32k output; compaction rules ported from AETOS; policy enforced at hook).
-- **Lessons L-C1–L-C28** (graduated through L-C10; L-C11–L-C28 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing; L-C27 [THIS SESSION] = no roster agent frontmatter materialises Tier-3 grant; L-C28 [THIS SESSION] = OS proposal gitignore treatment gap).
+- **Lessons L-C1–L-C29** (graduated through L-C10; L-C11–L-C29 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing; L-C27 [THIS SESSION] = no roster agent frontmatter materialises Tier-3 grant; L-C28 [THIS SESSION] = OS proposal gitignore treatment gap; L-C29 [THIS SESSION] = test fixture with secret-matching pattern must assemble at runtime, never `--no-verify`).
 
-**THIS SESSION — OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN (HEAD `9204129`, 9 commits):**
+**THIS SESSION — OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + CONFIG-SCAN VCS HOOK WIRED + L-C29 RECORDED (HEAD `072f93d`, 11 commits):**
 
 - **OI-1 RESOLVED (commits `b1afa6f` + `be20988`)** — `bin/gleipnir-launch` wrapper now passes `--mode caged` explicitly (line 31, checked on disk), ensuring genuine fail-close on boundary not-closed. Stale cross-refs in `decisions/go-caged-runbook.md` + `skills/go-caged/SKILL.md` cleared to state wrapper now fail-closes, preserving AC-4 as authoritative verification. Reviewed SPEC-CONFORM PASS + BLAST-RADIUS PASS + negative-check attestation (attested_by=quality-reviewer, light path).
 - **OI-2 acts 1–5 VERIFIED at OS level + AC-4 boundary GENUINELY CLOSED (commits `1b4b2f2`, `35493a9`, `f33cee5`):**
-  - gleipniragent uid/gid 510 created; agent-identity.env written (mode 644) and **gitignored** (commit `1b4b2f2`).
-  - Ownership/group layout applied (Tier-0/1/2 dirs group=gleipniragent g+w; Tier-3 staff no group write).
-  - 8 ENFORCEMENT_PATHS chmod'd OS-ro (drwxr-xr-x, files 644).
-  - G-3 key `mode 600` owner-only; AC-4 preflight run → `Verdict.CLOSED`, exit 0, empty reasons. **Box is CAGED at OS level, verified live this session.**
+   - gleipniragent uid/gid 510 created; agent-identity.env written (mode 644) and **gitignored** (commit `1b4b2f2`).
+   - Ownership/group layout applied (Tier-0/1/2 dirs group=gleipniragent g+w; Tier-3 staff no group write).
+   - 8 ENFORCEMENT_PATHS chmod'd OS-ro (drwxr-xr-x, files 644).
+   - G-3 key `mode 600` owner-only; AC-4 preflight run → `Verdict.CLOSED`, exit 0, empty reasons. **Box is CAGED at OS level, verified live this session.**
 - **Ansible playbook BUILT + FU-1 EXECUTED (commits `f33cee5` + `5539013` + `803855f`):**
-  - Decision record `decisions/s2-caged-ansible.md` (D1–D4 original, now D5/D6 added; operator-converged; Tool=Ansible, Scope=acts 1–5 + install 6 + AC-4 assert, Test-fidelity=3-layer, Execution-timing=authored-then-executed).
-  - `ansible/site.yml` mechanises the six acts idempotently, install-safe, self-verifying (verified against disk: 252 lines, pre/tasks/roles/post structure per spec).
-  - `ansible/tests/{run.sh,layer1-static.sh,layer2-dryrun.sh,layer3-idempotency.sh}` 3-layer harness (static/lint + `--check` dry-run + real chmod on disposable fixture).
-  - **D4 state → D4-FU-DONE (commit `803855f`):** Ansible installed (`brew install ansible ansible-lint`; ansible-core 2.21.3, ansible-lint 26.8.0). Harness RAN for FIRST TIME — surfaced real defects the authored-not-executed state had hidden:
-    - **D5 (act-3 scope fix):** act-3's broad `chmod -R a+rX .gleipnir` overlapped the enforcement subtree (acts 4/5 own those paths) → non-idempotent churn. Fixed: act-3 scoped to non-enforcement subtrees only. OS end-state preserved.
-    - **D6 (act-4/act-5 non-overlap):** act-4's `chmod -R a+rX,go-w keys/` re-loosened the key file, then act-5 re-tightened it every run. Fixed: act-4 excludes `*.key` (act-5 owns it exclusively). OS end-state preserved.
-    - `.ansible-lint` config created; real-run lint fixes applied. Test-harness stat portability bug (GNU `-c` first / BSD `-f` fallback) fixed.
-  - **NOW GENUINELY GREEN:** syntax-check + ansible-lint (0 fail, production-grade) + `--check-mutates-nothing` + idempotency (2nd run `changed=0`) + AC-4-fail path — **ALL PASS** ([D]-verified by live executed harness, not narrative). **D3/D4 machinery working as designed: first real run exposed correctness gaps, machinery proved idempotency rigorously.**
-  - **Hardened quality re-review (post-execution):** spec-conform PASS + blast-radius PASS + negative-check attestation (attested_by≠author) + cognition honour ([D]-backed by live green run) — **GO.**
+   - Decision record `decisions/s2-caged-ansible.md` (D1–D4 original, now D5/D6 added; operator-converged; Tool=Ansible, Scope=acts 1–5 + install 6 + AC-4 assert, Test-fidelity=3-layer, Execution-timing=authored-then-executed).
+   - `ansible/site.yml` mechanises the six acts idempotently, install-safe, self-verifying (verified against disk: 252 lines, pre/tasks/roles/post structure per spec).
+   - `ansible/tests/{run.sh,layer1-static.sh,layer2-dryrun.sh,layer3-idempotency.sh}` 3-layer harness (static/lint + `--check` dry-run + real chmod on disposable fixture).
+   - **D4 state → D4-FU-DONE (commit `803855f`):** Ansible installed (`brew install ansible ansible-lint`; ansible-core 2.21.3, ansible-lint 26.8.0). Harness RAN for FIRST TIME — surfaced real defects the authored-not-executed state had hidden:
+     - **D5 (act-3 scope fix):** act-3's broad `chmod -R a+rX .gleipnir` overlapped the enforcement subtree (acts 4/5 own those paths) → non-idempotent churn. Fixed: act-3 scoped to non-enforcement subtrees only. OS end-state preserved.
+     - **D6 (act-4/act-5 non-overlap):** act-4's `chmod -R a+rX,go-w keys/` re-loosened the key file, then act-5 re-tightened it every run. Fixed: act-4 excludes `*.key` (act-5 owns it exclusively). OS end-state preserved.
+     - `.ansible-lint` config created; real-run lint fixes applied. Test-harness stat portability bug (GNU `-c` first / BSD `-f` fallback) fixed.
+   - **NOW GENUINELY GREEN:** syntax-check + ansible-lint (0 fail, production-grade) + `--check-mutates-nothing` + idempotency (2nd run `changed=0`) + AC-4-fail path — **ALL PASS** ([D]-verified by live executed harness, not narrative). **D3/D4 machinery working as designed: first real run exposed correctness gaps, machinery proved idempotency rigorously.**
+   - **Hardened quality re-review (post-execution):** spec-conform PASS + blast-radius PASS + negative-check attestation (attested_by≠author) + cognition honour ([D]-backed by live green run) — **GO.**
 - **FU-3 go-caged-runbook update (commit `9204129`):** `decisions/go-caged-runbook.md` Step 1 prose updated to prefer the Ansible playbook (`sudo ansible-playbook -i ansible/inventory.ini ansible/site.yml`) while retaining the six manual acts as authoritative spec + fallback. Citations to D5/D6 added. Light-path spec-review PASS. Does not weaken AC-4 authority (caged entry stays explicit operator act).
+- **CONFIG-SCAN VCS HOOK WIRED (commits `608899e` + `072f93d`)** — Closed the asymmetry: config-scan was broker-only (git-guard.ts); now `hooks/pre-commit` runs it ALWAYS-ON on every commit (human or agent; broker cannot `--no-verify`), fail-closed on REFUSE or can't-run, mirroring git-guard exit contract (0 proceed / 1 block / 2 warn+proceed / else+can't-run block). Secret-scan preserved byte-for-byte. New `tests/test_precommit_hook.sh` (12-case host shell test, temp-repo+stub-CLI, no real-tree mutation) — **ALL 12 PASS incl. live-repo self-pass** (no lockout). Full hardened pipeline: plan → spec-review PASS (caught+fixed feasibility defect: test-execution was mis-routed to gleipnir-code which denies `sh*`/`bash*`; corrected to build-session-executes, which holds `bash`) → test/code (gleipnir-code authored; build-session ran test) → quality blast-radius PASS + negative-check attestation + cognition honour ([D]-backed by 12/12 green tests + live-repo pass) → git. **Decision record `config-scoping-preflight.md` status corrected** (stale "NOT YET WIRED" → "wired on broker + VCS-hook paths; CI deferred").
 - **Lesson L-C27 recorded (commit `0745b85`)** — operating-posture.md grants instructed-agent Tier-3 writes under uncaged default, but NO roster agent materialises that grant (orchestrator denies edit; plan/brainstorm only plans/**; code denies .gleipnir/**; session-scribe only Tier-0 + one named Tier-2 file). Corrects earlier inaccuracy.
 - **Lesson L-C28 recorded (commit `35493a9`)** — a ready-to-apply OS/host proposal that creates a host-local file must specify that file's gitignore treatment. Omitting it leaves an accidental-commit gap (observed this session with agent-identity.env; retroactively gitignored in commit `1b4b2f2`). Now a recorded guardrail.
+- **Lesson L-C29 recorded (commit `072f93d`)** — A test that must stage a secret-matching fixture (e.g., AKIA-prefixed patterns) will trip the commit-time secret-scan on the test file itself — assemble the matching literal at runtime so no complete pattern lives in tracked source; never resort to `--no-verify`. **Surfaced live this session:** the broker secret-scan correctly REFUSED the first commit attempt on the test fixture when it contained a literal AWS-key pattern; fixed via runtime assembly. Good proof the guard is live and end-to-end validated.
 
 **Prior-session paradigm work (retained; commits 7b18bb1 / 10b7edc / 53be4c4→3d136ad→0f52460):**
 - **Operating posture — UNCAGED by default, OPT-IN caged (commit 7b18bb1)** — Durable decision: `decisions/operating-posture.md`. Framework security boundary default REVERSED: single-principal operator is trusted principal; agents under instruction MAY write Tier-3. Caged mode (S-2 boundary + OS acts) is OPT-IN, required ONLY for (i) unattended/autonomous, (ii) untrusted-content ingestion, (iii) higher-assurance. G-3 key stays `mode 600` in BOTH modes (key-protected floor). **Mechanism (tested):** preflight has `RequestedMode {uncaged,caged}` + `--mode` CLI selector. Safety invariant: `requested_mode` NEVER participates in closure — uncaged can be unclosed; caged-requested-but-unclosed REFUSES. Tests 754 passed, 12 skipped; `tests/test_preflight_mode_selector.py` + 23 pre-existing updated. Hardened-path review: SPEC-CONFORM (2 reconciliations) + BLAST-RADIUS + attestation (attested_by≠author); cognition honour check: clean.
@@ -101,10 +125,11 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 
 ## Open threads / next
 
-### ⭐ START HERE NEXT SESSION: OI-2 arc is COMPLETE — Optional follow-ups only
+### ⭐ START HERE NEXT SESSION: OI-2 arc COMPLETE + CONFIG-SCAN HOOK WIRED — Optional follow-ups only
 
 **OI-2 is COMPLETE** (acts 1–5 verified at OS level; AC-4 GO; box is CAGED; playbook executed & proven green).
 **The Ansible/caged-mode arc is now CLOSED** (D4-FU-DONE; playbook working machinery; FU-1/FU-3 delivered).
+**CONFIG-SCAN is substantially WIRED** (broker path + VCS-hook path both live, tested, green); **CI path is the only deferred piece** (push/PR-time gate, independent of local hook state — a small optional follow-on, not blocking; local gates are sufficient for current workflow).
 
 **Remaining optional follow-ups (not blocking; operator discretion):**
 
@@ -124,6 +149,7 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 ---
 
 **Resumes to background threads** (lower-priority, multi-session backlog):
+- **Config-scan CI gate (optional follow-on):** config-scan now runs on broker + VCS-hook paths (both live, tested, green); CI path (push/PR-time, independent of local hooks) is deferred — small, self-contained follow-on once the framework is in stable use.
 - **G-4 remainder:** Seam 7 (live `tool.execute.after` hook); Observer + novelty-triage; Token provenance / cost tracking.
 - **E-1 credential-unreachability:** Argument-policy half closed; credential half still open (brokers co-located with env-injected tokens; S-2 necessary-but-not-sufficient).
 - **E-2 platform-webhook receiver:** no component home yet.
