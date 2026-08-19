@@ -1,10 +1,15 @@
 #!/bin/sh
-# Gleipnir pre-commit hook — secret-scan (always) + opt-in branch/data-file.
+# Gleipnir pre-commit hook — secret-scan (always) + config-scan (always) +
+# opt-in branch/data-file checks.
 #
-# Enforcement lives HERE (the VCS layer), not in the git broker. Runs for
+# Enforcement lives HERE (the VCS layer), not only in the git broker. Runs for
 # humans and agents. Humans may bypass with `git commit --no-verify` (their
 # call); the gleipnir-git broker CANNOT pass --no-verify, so agents cannot
-# bypass it. Mirrors src/gleipnir/broker/git/guards.py's advisory logic.
+# bypass it. Secret-scan mirrors src/gleipnir/broker/git/guards.py's advisory
+# logic. Config-scan mirrors .gleipnir/plugins/git-guard.ts's exit-code
+# contract EXACTLY (single source of truth: 0=CLOSED / 1=REFUSE /
+# 2=PROCEED_UNCLOSED) — git-guard.ts gates only the broker's git writes; this
+# block gates every plain `git commit` too, closing that asymmetry.
 #
 # Toggles (env):
 #   GLEIPNIR_GIT_STRICT=1            enable branch + data-file checks
@@ -23,6 +28,56 @@ if printf '%s\n' "$added" | grep -Eq \
   echo "pre-commit: potential secret in staged changes — refusing." >&2
   echo "  (false positive? fix the content, or the operator may 'git commit --no-verify')" >&2
   fail=1
+fi
+
+# --- Config-scan (ALWAYS ON — parity with git-guard.ts's broker-write gate) ---
+# Resolve the repo root robustly (works under worktrees/subdir invocation; see
+# .gleipnir/plans/config-scan-precommit-hook.md edge case 3), then invoke the
+# out-of-framework `bin/gleipnir-preflight config-scan` CLI shim and map its
+# exit code EXACTLY per .gleipnir/plugins/git-guard.ts's decideFromExit /
+# PreflightUnavailable contract (0=CLOSED/1=REFUSE/2=PROCEED_UNCLOSED, any
+# other code or a missing/non-executable CLI = fail-closed). Feeds the same
+# `fail` accumulator as secret-scan above — neither check short-circuits the
+# other; both run and either can block the commit.
+repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -z "$repo" ]; then
+  here=$(CDPATH= cd "$(dirname "$0")" && pwd)
+  repo=$(cd "$here/.." && pwd)
+fi
+cli="$repo/bin/gleipnir-preflight"
+if [ ! -x "$cli" ]; then
+  # Broken PREREQUISITE, not a policy REFUSE — still fail-closed (mirrors
+  # git-guard.ts's PreflightUnavailable). Covers both "missing" (ENOENT) and
+  # "present but not +x" (EACCES) uniformly, and is the exact class
+  # tests/test_bin_executable.py guards against for the committed mode.
+  echo "pre-commit: '$cli' is missing or not executable." >&2
+  echo "  Fix: chmod +x bin/gleipnir-preflight" >&2
+  echo "  (or: git update-index --chmod=+x bin/gleipnir-preflight  # committed-mode fix)" >&2
+  echo "  This is a BROKEN PREREQUISITE, not a policy rejection; failing closed." >&2
+  fail=1
+else
+  code=0
+  ( cd "$repo" && "$cli" config-scan ) >&2 || code=$?
+  case "$code" in
+    0)
+      : # CLOSED — config well-scoped; proceed.
+      ;;
+    2)
+      echo "pre-commit: config-scan reported PROCEED_UNCLOSED (--override-ack);" >&2
+      echo "  proceeding on the operator's override." >&2
+      ;;
+    1)
+      echo "pre-commit: config-scan REFUSED — the agent roster / opencode.jsonc" >&2
+      echo "  is mis-scoped (fail-open MCP scoping, single-holder violation," >&2
+      echo "  malformed config, or similar). Fix the finding reported above," >&2
+      echo "  or the operator may re-run with --override-ack." >&2
+      fail=1
+      ;;
+    *)
+      echo "pre-commit: config-scan returned unexpected exit code $code; failing closed." >&2
+      fail=1
+      ;;
+  esac
 fi
 
 # --- Branch protection (OPT-IN) ---

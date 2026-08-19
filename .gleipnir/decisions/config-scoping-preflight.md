@@ -1,11 +1,19 @@
 # Decision: Config/scoping preflight (`config_scan.py`) — agent/config CONTENT validation
 
-**Status: authored, built, in use; NOT YET WIRED to run automatically.** The
-check exists and passes against the live repo, and is available as a
-`gleipnir-preflight config-scan` subcommand, but nothing yet runs it on a git
-hook or in CI (deferred — see open items). Authored/built via the pipeline;
-Tier-3 record authored by the operator via the build-mode escape hatch. Plan of
-record: `../plans/config-scoping-preflight.md` (twice spec-reviewed + a
+**Status: authored, built, WIRED on both the broker-plugin path AND the VCS
+pre-commit hook; CI wiring still deferred.** The check exists, passes against
+the live repo, and is available as a `gleipnir-preflight config-scan`
+subcommand. It now runs automatically on **two** paths: (1) the `git-guard.ts`
+opencode plugin runs it before every `gleipnir-git` broker write (agent commit
+path); and (2) the active `hooks/pre-commit` VCS hook runs it ALWAYS-ON on every
+commit (human or agent — the broker cannot pass `--no-verify`), fail-closed on a
+REFUSE or a can't-run, mirroring the git-guard exit-contract (0 proceed / 1 block
+/ 2 warn+proceed / else+can't-run block). See
+`../plans/config-scan-precommit-hook.md` + `tests/test_precommit_hook.sh`
+(12-case host shell test, all green). **Still deferred:** running config-scan in
+CI (a push/PR-time gate independent of local hook state). Authored/built via the
+pipeline; Tier-3 record authored by the operator via the build-mode escape hatch.
+Plan of record: `../plans/config-scoping-preflight.md` (twice spec-reviewed + a
 design-coherence pass; full ATLAS with the Design Consolidation contract).
 
 ## Why
@@ -74,10 +82,14 @@ mis-scopes) at restart" defects *before* the operator restarts.
 
 ## Honesty labels / open items
 
-- **Not yet enforced automatically.** The check runs only when explicitly
-  invoked (`gleipnir-preflight config-scan`). Wiring it into a git pre-commit
-  hook and/or CI is a deferred follow-on that needs its own convergence — until
-  then it catches the bug class only if someone runs it.
+- **Enforced automatically on commit + broker write; CI still deferred.** The
+  check now runs (a) via `git-guard.ts` before every `gleipnir-git` broker write,
+  and (b) via the ALWAYS-ON `hooks/pre-commit` VCS hook on every commit
+  (fail-closed; operator-converged, plan `../plans/config-scan-precommit-hook.md`,
+  hardened-reviewed GO). The remaining deferred piece is a **CI** gate (push/PR
+  time, independent of local hook state) — its own future convergence. Before
+  this wiring the check caught the bug class only if someone ran it manually;
+  that gap is now closed for the commit + broker paths.
 - **Residual fast-follow (non-blocking):** `config_scan_main`'s
   `jsonc_agent_overrides` comprehension assumes each `opencode.jsonc` `agent`
   block is a dict; a malformed agent entry (e.g. `"agent": {"foo": true}`) could
