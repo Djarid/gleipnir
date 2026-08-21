@@ -457,6 +457,16 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-1
 
 ---
 
+## L-C30 — A test-first plan whose own tests exercise not-yet-built code risks collection-time self-reference; state the GENERAL rule up front, not enumerated examples
+
+**Observed:** the judge-wiring plan needed FOUR spec-conformance review rounds to close variants of the same underlying failure class — a test-first slice's own test-authoring step (tests/test_judges.py importing the not-yet-built judges.py, then calling factories that stub-raise NotImplementedError) is collection-time self-referential: pytest evaluates imports, module-scope statements, parametrize/fixture-params argument lists, and default-argument expressions all at COLLECTION time, not call time. Each review round found one more of these mechanisms (full-suite exit code semantics; module-import timing; eager parametrize-table construction; then the reviewer flagging that even the fix's own illustrative "never" list named only 2 of at least 4 known mechanisms). The plan only converged once the rule was stated as a general affirmative constraint ("every call must occur inside a body that executes at test/fixture RUN time, never at collection time, by whatever mechanism") rather than as a list of examples to enumerate one at a time under adversarial pressure.
+
+**Proposed lesson:** when a test-first plan's own authored tests will exercise a not-yet-built stub (or otherwise touch code under construction), state the collection-vs-runtime timing constraint as a GENERAL rule ("nothing under test may be evaluated/called except inside a body that runs at test/fixture invocation time") in the FIRST authoring pass, not as an enumerated list of specific forbidden syntactic forms — enumeration invites exactly the one-variant-per-review-round pattern seen here, because adversarial review will keep finding language mechanisms the list didn't name.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-21 · session unknown · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
