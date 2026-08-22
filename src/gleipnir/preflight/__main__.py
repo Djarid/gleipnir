@@ -35,6 +35,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from . import advance
 from . import bridge_recovery
 from . import config_scan
 from .boundary import RequestedMode, Verdict, run_preflight
@@ -109,6 +110,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if resolved_argv and resolved_argv[0] == "bridge-reset":
         return bridge_recovery.bridge_reset_main(list(resolved_argv[1:]))
+
+    if resolved_argv and resolved_argv[0] == "advance":
+        # Phase 1 (`.gleipnir/plans/seam7-seam8-wiring.md`, Assemble Phase 1
+        # step 1): the real advance entrypoint, mirroring the
+        # `bridge-status`/`bridge-reset` leading-token dispatch above.
+        # `advance.main` owns its own `--pipeline-id`/`--bridge-path`/
+        # `--key-file`/`--log-root`/`--test-timeout` argparse instance.
+        return advance.main(list(resolved_argv[1:]))
 
     if resolved_argv and resolved_argv[0] == "config-scan":
         config_root = None
