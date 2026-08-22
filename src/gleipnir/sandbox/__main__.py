@@ -18,7 +18,15 @@ test SELECTORS ONLY and are refused outright on a profile that does not
 declare `test_selector_prefix = true` — the agent can influence *which*
 tests run, never *what command* runs. `image` comes SOLELY from the
 resolved profile (`profile.image`) — there is no `--image` flag and no
-`SANDBOX_IMAGE` constant read on this dispatch path.
+`SANDBOX_IMAGE` constant read on this dispatch path. Both `test` and `lint`
+additionally accept an optional `--profile <name>` that selects a specific
+configured profile for that one invocation, overriding the config's
+`default_profile`; omitting `--profile` resolves `default_profile` exactly
+as before. `--profile` only chooses *among the profiles the Tier-3 config
+already defines* — an unknown name fails closed (exit 3) via the existing
+`resolve_profile` path — and it does not affect the fixed config location,
+the image-from-resolved-profile rule, or any fail-closed behavior.
+`image-build` does **not** accept `--profile`.
 
 The config location is FIXED to the Tier-3 path in production
 (`<repo>/.gleipnir/sandbox`), computed internally — never overridable via a

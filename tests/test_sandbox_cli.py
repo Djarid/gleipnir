@@ -374,6 +374,25 @@ def test_bare_test_lint_namespace_has_profile_attribute_defaulting_to_none():
     assert args_lint.profile is None
 
 
+def test_image_build_subparser_has_no_profile_flag():
+    """`--profile` is a `test`/`lint` dispatch-selector only; `image-build`
+    must NOT gain it (ISP: `image-build` carries its own distinct flag
+    surface — `--image` — and its interface must not silently broaden to the
+    `--profile` capability the dispatch verbs have). A bare `image-build`
+    parse carries no `profile` attribute, and `--profile` is actively
+    rejected: `image-build` has no `argparse.REMAINDER` positional (contrast
+    `test`'s `pytest_args`), so an unrecognized `--profile` is a real parse
+    error (SystemExit), not a token swallowed as a positional — the same
+    "no REMAINDER -> real parse error" reasoning as
+    `test_lint_subparser_has_no_image_flag`. The attribute-absence half also
+    rules out a `default=None`-broadening regression a SystemExit-only test
+    would miss."""
+    args = cli.build_parser().parse_args(["image-build"])
+    assert not hasattr(args, "profile")
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["image-build", "--profile", "whatever"])
+
+
 def test_profile_broker_test_selects_broker_image_and_command(
     monkeypatch, captured_exec, tmp_path, capsys
 ):
