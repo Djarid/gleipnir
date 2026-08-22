@@ -57,7 +57,7 @@ test_selector_prefix = false
 # local digest resolved via `podman inspect ... --format '{{.Digest}}'`.
 [profile.broker]
 image = "localhost/gleipnir-sandbox-broker@sha256:549eeaa9e86ad977cea43eabbdd332f9889798a1c5bc4058dcc3e356faf16aea"
-test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py", "tests/test_broker_git_commit_guard.py", "tests/test_broker_git_mcp_server.py", "tests/test_broker_pm_mcp_server.py"]
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py", "tests/test_broker_git_commit_guard.py", "tests/test_broker_git_mcp_server.py", "tests/test_broker_pm_mcp_server.py", "tests/test_broker_run_manifest.py"]
 lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
 coverage = { args = ["--cov=src/gleipnir/broker", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
 test_selector_prefix = false

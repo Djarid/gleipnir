@@ -36,7 +36,9 @@ Plan: `.gleipnir/plans/broker-mcp.md`, Assemble Step 4.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from mcp.server.fastmcp import FastMCP
@@ -164,6 +166,90 @@ def _current_branch(repo_dir: Optional[str] = None) -> str:
     if result.get("success"):
         return result["stdout"].strip()
     return ""
+
+
+# ---------------------------------------------------------------------------
+# D5 run-manifest sidecar write (Seam 8; `.gleipnir/plans/seam7-seam8-wiring.md`
+# Assemble Phase 3 step 5, refined by `.gleipnir/plans/d5-sidecar-write.md`).
+# After a successful commit, the broker PROCESS (not a roster agent) stamps
+# the new HEAD into the framework-written, agent-read-only run manifest so
+# the fresh-process advance/fetch path can correlate `(pipeline_id,
+# head_sha)` for GIT->GATE. D5 CONVERGED: this is a PLAIN FILE (no own
+# HMAC/digest) -- integrity comes solely from the existing
+# `.gleipnir/var/run/` agent-unwritable grant class, NOT from any signature
+# added here. The shape/keys/path exactly match the READ side,
+# `gleipnir.preflight.advance.read_pipeline_run_identity`
+# (`{"pipeline_id": <str>, "head_sha": <str>}` at
+# `.gleipnir/var/run/pipeline-run.json`), which fail-closes to `None` unless
+# BOTH keys are non-empty strings -- so both are written together or not at
+# all.
+#
+# `pipeline_id` is sourced from the `GLEIPNIR_PIPELINE_ID` env var -- the SAME
+# session-scoped arming convention the Phase-2 advance hook already uses
+# (`.gleipnir/plugins/advance-hook.ts`, `PIPELINE_ID_ENV`), NOT an agent-facing
+# tool parameter: making it a tool arg would let an agent forge the correlation
+# identity the gate refuses mismatches on. When it is unset/empty (an ordinary
+# non-pipeline commit, i.e. an UNARMED run) NO sidecar is written and
+# `commit_changes` behaves exactly as before. The write is best-effort and
+# NEVER changes `commit_changes`'s success/return contract: the commit has
+# already happened, so a sidecar-write failure must not turn a successful
+# commit into a reported failure (that would be a false-negative worse than a
+# missing sidecar, which the read side already fail-closes on).
+#
+# `run_root` is an injectable keyword (mirrors `advance.py`'s own
+# `run_root=` seam on `read_pipeline_run_identity`), defaulting to
+# `_repo_root() / ".gleipnir" / "var" / "run"`. `commit_changes` calls this
+# helper with NO `run_root` override (production default) -- the parameter
+# exists purely for test isolation and adds no agent-facing surface.
+# ---------------------------------------------------------------------------
+
+_PIPELINE_ID_ENV = "GLEIPNIR_PIPELINE_ID"
+
+# Filename + repo-root-relative directory, matching
+# `gleipnir.preflight.advance` (`DEFAULT_RUN_ROOT` / `PIPELINE_RUN_FILENAME`).
+_PIPELINE_RUN_FILENAME = "pipeline-run.json"
+_PIPELINE_RUN_REL_DIR = Path(".gleipnir") / "var" / "run"
+
+
+def _repo_root() -> Path:
+    # .../src/gleipnir/broker/git/mcp_server.py -> parents[4] is the repo root.
+    return Path(__file__).resolve().parents[4]
+
+
+def _write_run_manifest_head_sha(
+    commit_hash: str, *, run_root: Optional[Path] = None
+) -> None:
+    """Best-effort D5 sidecar stamp: write `{pipeline_id, head_sha}` to
+    `<run_root>/pipeline-run.json` after a successful commit, ONLY when
+    armed (``GLEIPNIR_PIPELINE_ID`` set and non-empty) and ``commit_hash`` is
+    a non-empty string. Never raises: any failure is swallowed so a
+    sidecar-write problem cannot flip an already-succeeded commit's result.
+    Writes both required keys together (the read side fail-closes on a
+    missing or empty either-key), plain file, no MAC (D5 CONVERGED).
+
+    ``run_root`` is an injectable override (T1 testability seam, mirrors
+    `advance.py`'s `read_pipeline_run_identity(run_root=...)`); it defaults
+    to the real `.gleipnir/var/run` tree resolved from this file's own
+    location. `commit_changes` never passes this argument -- it is not part
+    of any agent-facing surface."""
+    pipeline_id = os.environ.get(_PIPELINE_ID_ENV, "").strip()
+    if not pipeline_id or not commit_hash:
+        return
+    try:
+        root = run_root if run_root is not None else (_repo_root() / _PIPELINE_RUN_REL_DIR)
+        path = root / _PIPELINE_RUN_FILENAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps({"pipeline_id": pipeline_id, "head_sha": commit_hash}),
+            encoding="utf-8",
+        )
+    except OSError:
+        # Fail-safe: the commit already succeeded. A missing/failed sidecar
+        # write degrades to "GATE cannot yet be attempted" on the read side
+        # (`read_pipeline_run_identity` -> None -> `MissingRunIdentity`),
+        # which is the correct fail-closed outcome -- never a false green,
+        # and never a false commit failure.
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -366,6 +452,11 @@ def commit_changes(message: str, files: str = "", repo_dir: str = "") -> str:
 
     hash_result = _run_git(["rev-parse", "HEAD"], rd)
     commit_hash = hash_result["stdout"].strip() if hash_result.get("success") else ""
+
+    # D5 (Seam 8): stamp the new HEAD into the run-manifest sidecar as a
+    # best-effort side effect of this commit -- armed runs only, never alters
+    # the return contract below. See `_write_run_manifest_head_sha`.
+    _write_run_manifest_head_sha(commit_hash)
 
     return json.dumps(
         {
