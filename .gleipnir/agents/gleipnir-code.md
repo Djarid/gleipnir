@@ -15,6 +15,16 @@ permission:
     ".git/**": deny
     ".github/**": deny
     "src/gleipnir/preflight/**": deny
+    # seam7/seam8 (L-C27): exact-path allows for the ONLY files this slice needs.
+    # Placed after the preflight/** and .gleipnir/** denies so last-match-wins
+    # grants exactly these named files. NOT globs — the rest of preflight/** and
+    # .gleipnir/plugins/** stay denied. sequence-gate.ts (the pre-tool gate that
+    # polices this agent) is deliberately NOT granted (Axiom 2 / G-1): the new
+    # post-tool trigger lives in a sibling advance-hook.ts instead.
+    "src/gleipnir/preflight/advance.py": allow
+    "src/gleipnir/preflight/fetch_attestation.py": allow
+    "src/gleipnir/preflight/__main__.py": allow
+    ".gleipnir/plugins/advance-hook.ts": allow
   read: allow
   task: deny
   webfetch: deny
@@ -24,6 +34,18 @@ permission:
     "bin/gleipnir-sandbox lint": allow
     "./bin/gleipnir-sandbox test": allow
     "./bin/gleipnir-sandbox lint": allow
+    "bin/gleipnir-sandbox test --profile python": allow
+    "bin/gleipnir-sandbox test --profile broker": allow
+    "bin/gleipnir-sandbox test --profile node": allow
+    "bin/gleipnir-sandbox lint --profile python": allow
+    "bin/gleipnir-sandbox lint --profile broker": allow
+    "bin/gleipnir-sandbox lint --profile node": allow
+    "./bin/gleipnir-sandbox test --profile python": allow
+    "./bin/gleipnir-sandbox test --profile broker": allow
+    "./bin/gleipnir-sandbox test --profile node": allow
+    "./bin/gleipnir-sandbox lint --profile python": allow
+    "./bin/gleipnir-sandbox lint --profile broker": allow
+    "./bin/gleipnir-sandbox lint --profile node": allow
     "git*": deny
     "gh*": deny
     "glab*": deny
