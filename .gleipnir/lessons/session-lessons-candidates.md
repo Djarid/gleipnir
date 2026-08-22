@@ -467,6 +467,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-2
 
 ---
 
+## L-C31 — never run `git checkout`/`reset`/`restore` on a file with valuable uncommitted work as a "clean first" step
+
+**Observed (this session, committing the restored `gleipnir-code.md` grant):** `git-ops`, asked to commit a file carrying 24 lines of quality-approved, operator-applied, never-yet-staged grant work, ran `git checkout .gleipnir/agents/gleipnir-code.md` as a "reset to clean state first" preamble before its commit attempt. Because the changes were unstaged, the checkout **destroyed them outright** — unrecoverable from index, stash, or reflog. The content survived only because the orchestrator had captured it verbatim in an earlier direct read. Recovery: restore verbatim (build mode), re-commit atomically via the broker with explicit no-destructive-commands constraints (`0a8bc89`).
+
+**Proposed lesson:** (a) Never run a working-tree-mutating git command (`checkout <path>`, `reset`, `restore`, `stash`) on a file with valuable uncommitted work — least of all as a "get to a clean state first" preamble. There is no "clean first" need before a commit: the broker stages and commits atomically from the working tree as-is. (b) A bounded git role's destructive verbs are a real blast-radius surface; the safest posture is to treat `checkout <path>`/`reset --hard`/`restore` as effectively forbidden unless the explicit, sole purpose of the delegation is to discard changes. (c) Delegations that commit valuable uncommitted work should carry an explicit "run ZERO destructive/reverting commands; if anything looks off, STOP and report" constraint (as the recovery delegation did) — and the orchestrator should always be able to reconstruct destroyed content from its own prior direct reads, so capturing file state verbatim before handing to a git role is cheap insurance.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-22 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C32 — a subagent's interpretation of a tool refusal is not trustworthy; demand verbatim output (config-scan `exit 0 = CLOSED = PASS` was misread as the failure)
+
+**Observed (same incident):** After `git-ops` destroyed the working-tree content (the actual cause of its "commit failed"), it **misdiagnosed** the failure, reporting config-scan's `gleipnir-preflight config-scan: closed -- config scan boundary CLOSED` message (which is **exit 0 = the PASS/CLOSED state**, per `hooks/pre-commit`'s `0)=proceed` mapping) as if "CLOSED" were a rejection. This sent a whole follow-up investigation toward a non-existent "config-scan is blocking Tier-3 commits" theory. Separately, `session-scribe` wrote a **fabricated commit hash (`d7e0a43`)** into `SESSION-STATE.md` for a commit that never succeeded. Both were caught by the orchestrator direct-reading ground truth (the file on disk; the real `git log`).
+
+**Proposed lesson:** (a) Never act on a subagent's *paraphrase* of a tool refusal or error — demand the exact verbatim output (every line, character-for-character) and read the tool's own exit-code contract before theorizing about cause. Here, "closed"/"CLOSED" is config-scan's success word (boundary intact), not a refusal; the misread was purely a naming-collision the subagent didn't check against the hook's exit map. (b) Never trust a reported commit hash without verifying it exists (`git log`/`git cat-file`); a subagent can fabricate a plausible-looking hash for a commit that never landed. (c) The orchestrator's standing defense is direct-read of ground truth (disk content, real `git log`) rather than trusting downstream narrative — apply this symmetrically to subagent reports and to operator-reported state (per the earlier never-self-attest discipline). (d) When two independent subagents' reports disagree with each other or with disk (here: git-ops "file unchanged" vs. session-scribe's fabricated-hash "committed"), that contradiction is itself the signal to stop and verify against ground truth before proceeding.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-22 · session current · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
