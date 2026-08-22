@@ -73,6 +73,25 @@ test_selector_prefix = false
 """
 
 
+# `sandbox-profile-selector` plan (Decision 7 / L4): the tracked
+# `tests/fixtures/sandbox_profiles.toml` fixture declares only
+# `python`+`node` — no `broker`. Per the plan's own cited precedent
+# (`test_broker_profile_lint_also_gets_pycache_redirect`, below), a
+# broker-bearing test config is authored inline via `_write_config` rather
+# than editing the shared tracked fixture (keeps the shared fixture's blast
+# radius unchanged for the many tests that already depend on it).
+_BROKER_TOML = """
+default_profile = "broker"
+
+[profile.broker]
+image = "gleipnir-sandbox:latest"
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/broker"]
+lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
+coverage = { unavailable = true, justified = "broker profile coverage deferred; sandbox smoke-only this slice" }
+test_selector_prefix = false
+"""
+
+
 # ---------------------------------------------------------------------------
 # Parser: agent-facing verb set does not widen
 # ---------------------------------------------------------------------------
@@ -296,6 +315,243 @@ def test_node_profile_refuses_extra_selector_passthrough(
     rc = cli.main(["test", "--", "some-selector"], config_root=config_root)
     assert rc == 3
     assert captured_exec == []
+
+
+# ---------------------------------------------------------------------------
+# `--profile <name>` selector (`.gleipnir/plans/sandbox-profile-selector.md`)
+#
+# TEST-FIRST: the `--profile` flag does not exist yet on `test`/`lint` at the
+# time these tests are authored (Assemble Step 1). They are expected to fail
+# until Step 2 threads `--profile` through `_resolve_dispatch_profile`. Every
+# assertion below is inside a test function body (never at collection time —
+# L-C30), so a missing/half-built flag fails the assertions at RUN time, not
+# at collection.
+# ---------------------------------------------------------------------------
+
+def test_profile_flag_parses_before_remainder_and_stripping_still_works():
+    """[argparse guard — Decision 4 / T2] `--profile` must be registered as
+    an option on the `test` subparser BEFORE the `pytest_args` REMAINDER
+    positional (`__main__.py:232`), so `test --profile broker` yields
+    `args.profile == "broker"` with an EMPTY `pytest_args` — NOT swallowed
+    into REMAINDER as a positional/selector token. Also locks that the
+    existing `--`-stripping behavior in `main()` (`:255-256`) still applies
+    correctly when BOTH `--profile` and `-- <selectors>` are present (the T2
+    edge case: `test --profile python -- -k bridge`)."""
+    parser = cli.build_parser()
+
+    args = parser.parse_args(["test", "--profile", "broker"])
+    assert args.profile == "broker"
+    assert args.pytest_args == []
+
+    # `--profile` still parses as an option even with trailing REMAINDER
+    # selectors present; the selectors land in pytest_args untouched.
+    args_with_selectors = parser.parse_args(
+        ["test", "--profile", "python", "--", "-k", "bridge"]
+    )
+    assert args_with_selectors.profile == "python"
+    assert args_with_selectors.pytest_args == ["--", "-k", "bridge"]
+
+    # main()'s existing "--" stripping continues to work on that REMAINDER.
+    stripped = list(args_with_selectors.pytest_args)
+    if stripped and stripped[0] == "--":
+        stripped = stripped[1:]
+    assert stripped == ["-k", "bridge"]
+
+    # `lint` gains `--profile` too, with no REMAINDER positional at all.
+    lint_args = parser.parse_args(["lint", "--profile", "node"])
+    assert lint_args.profile == "node"
+    assert not hasattr(lint_args, "pytest_args")
+
+
+def test_bare_test_lint_namespace_has_profile_attribute_defaulting_to_none():
+    """[Decision 6] A bare `test`/`lint` parse (no `--profile` at all)
+    carries `args.profile is None` — the exact sentinel
+    `_resolve_dispatch_profile` must treat as "use
+    profiles.default_profile", never a different implicit default."""
+    args_test = cli.build_parser().parse_args(["test"])
+    assert args_test.profile is None
+    args_lint = cli.build_parser().parse_args(["lint"])
+    assert args_lint.profile is None
+
+
+def test_profile_broker_test_selects_broker_image_and_command(
+    monkeypatch, captured_exec, tmp_path, capsys
+):
+    """[Converged requirement 1] `--profile broker` resolves and dispatches
+    the broker profile's configured TEST command + image."""
+    config_root = _write_config(tmp_path, _BROKER_TOML)
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["image"] = image
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", image, *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["test", "--profile", "broker"], config_root=config_root)
+    assert rc == 0
+    assert seen["image"] == "gleipnir-sandbox:latest"
+    assert seen["cmd"] == [
+        "python", "-m", "pytest", "-p", "no:cacheprovider", "tests/broker",
+    ]
+    err = capsys.readouterr().err
+    assert "coverage: unavailable (justified:" in err
+
+
+def test_profile_broker_lint_selects_broker_lint_command(
+    monkeypatch, captured_exec, tmp_path
+):
+    """[Converged requirement 1, lint half] `lint --profile broker`
+    likewise resolves and dispatches the broker profile's LINT command."""
+    config_root = _write_config(tmp_path, _BROKER_TOML)
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["image"] = image
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", image, *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["lint", "--profile", "broker"], config_root=config_root)
+    assert rc == 0
+    assert seen["image"] == "gleipnir-sandbox:latest"
+    assert seen["cmd"] == ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
+    # D2's unconditional pycache redirect still applies regardless of which
+    # profile was reached via --profile (profile-agnostic in _cmd_lint).
+    assert ("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache") in seen["extra_env"]
+
+
+def test_profile_node_test_selects_node_image_and_command(
+    monkeypatch, captured_exec, python_config_root, capsys
+):
+    """[Converged requirement 2] `--profile node` resolves and dispatches
+    the node profile's image + command — using the SHARED tracked fixture
+    (`python_config_root`, `default_profile = "python"`) to prove `--profile`
+    genuinely OVERRIDES the default rather than merely coinciding with it."""
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["image"] = image
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", image, *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["test", "--profile", "node"], config_root=python_config_root)
+    assert rc == 0
+    assert seen["image"] == (
+        "gleipnir-sandbox-node@sha256:"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    )
+    assert seen["cmd"] == ["node", "--test", "tests/test_sequence_gate.mjs"]
+    assert not any(c.startswith("--cov") for c in seen["cmd"])
+    assert seen["extra_env"] == []
+    err = capsys.readouterr().err
+    assert "coverage: unavailable (justified:" in err
+    assert "zero-dep .mjs seam only" in err
+
+
+def test_profile_python_explicit_matches_bare_omission(
+    monkeypatch, captured_exec, python_config_root
+):
+    """[Converged requirement 3] `--profile python` (explicit) AND bare
+    `test` (no flag at all) BOTH resolve to the python profile — asserted by
+    capturing both dispatches and proving the assembled image/argv/env are
+    byte-for-byte identical (Stress-test A3), not merely "both succeed"."""
+    seen_by_call = []
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen_by_call.append(
+            {"cmd": list(cmd), "image": image, "extra_env": list(extra_env)}
+        )
+        return ["podman", "run", *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+
+    rc_explicit = cli.main(["test", "--profile", "python"], config_root=python_config_root)
+    rc_omitted = cli.main(["test"], config_root=python_config_root)
+
+    assert rc_explicit == 0
+    assert rc_omitted == 0
+    assert len(seen_by_call) == 2
+    explicit_call, omitted_call = seen_by_call
+    assert explicit_call == omitted_call
+    assert explicit_call["image"] == "gleipnir-sandbox:latest"
+    assert "--cov=src/gleipnir" in explicit_call["cmd"]
+    assert "--cov-branch" in explicit_call["cmd"]
+    assert ("COVERAGE_FILE", "/work/.scratch/.coverage") in explicit_call["extra_env"]
+
+
+def test_profile_nonexistent_fails_closed_never_dispatches(
+    captured_exec, python_config_root
+):
+    """[Converged requirement 4 — the safety hinge] `--profile nonexistent`
+    (any unmatched name) fails closed through the EXISTING
+    `resolve_profile` KeyError->`ProfileError` path (Decision 3 — no NEW
+    validation layer is added): exit 3, and `prepare_sandbox_run`/`_exec`
+    are NEVER reached (`captured_exec == []`) — no silent fallback to the
+    default profile."""
+    rc = cli.main(["test", "--profile", "nonexistent"], config_root=python_config_root)
+    assert rc == 3
+    assert captured_exec == []
+
+
+def test_profile_nonexistent_error_names_the_defined_profiles(
+    capsys, captured_exec, python_config_root
+):
+    """[Converged requirement 4, message content] The fail-closed error for
+    an unknown `--profile` names the actually-defined profile set (via the
+    existing `resolve_profile` message), not a generic/blank error."""
+    rc = cli.main(["test", "--profile", "nonexistent"], config_root=python_config_root)
+    assert rc == 3
+    err = capsys.readouterr().err
+    assert "nonexistent" in err
+    assert "node" in err and "python" in err
+
+
+def test_profile_nonexistent_lint_also_fails_closed(captured_exec, python_config_root):
+    """[Converged requirement 4, lint half] `lint --profile nonexistent`
+    fails closed identically — same seam, same exit code, no dispatch."""
+    rc = cli.main(["lint", "--profile", "nonexistent"], config_root=python_config_root)
+    assert rc == 3
+    assert captured_exec == []
+
+
+def test_bare_test_and_lint_with_no_profile_flag_unchanged_argv_and_image(
+    monkeypatch, captured_exec, python_config_root
+):
+    """[Converged requirement 5 — backward-compat regression] Bare
+    `test`/`lint` with NO `--profile` flag at all must resolve to
+    `default_profile` and assemble EXACTLY today's argv/image/coverage/env —
+    byte-for-byte identical to the pre-`--profile` behaviour (Decision 6:
+    `default=None`). Locks the no-breaking-change requirement directly,
+    alongside (not instead of) the pre-existing unmodified tests above that
+    already exercise the same bare-invocation paths."""
+    calls = []
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        calls.append({"cmd": list(cmd), "image": image, "extra_env": list(extra_env)})
+        return ["podman", "run", *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+
+    rc_test = cli.main(["test"], config_root=python_config_root)
+    rc_lint = cli.main(["lint"], config_root=python_config_root)
+
+    assert rc_test == 0
+    assert rc_lint == 0
+    test_call, lint_call = calls
+    assert test_call["image"] == "gleipnir-sandbox:latest"
+    assert "--cov=src/gleipnir" in test_call["cmd"]
+    assert "--cov-branch" in test_call["cmd"]
+    assert "--cov-report=term-missing" in test_call["cmd"]
+    assert "no:cacheprovider" in test_call["cmd"]
+    assert ("COVERAGE_FILE", "/work/.scratch/.coverage") in test_call["extra_env"]
+    assert lint_call["cmd"] == ["python", "-m", "compileall", "-q", "src"]
+    assert lint_call["image"] == "gleipnir-sandbox:latest"
+    assert ("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache") in lint_call["extra_env"]
 
 
 # ---------------------------------------------------------------------------

@@ -98,20 +98,23 @@ def _exec(argv: list[str]) -> int:
     return proc.returncode
 
 
-def _resolve_dispatch_profile(repo: Path, config_root: Path | None):
-    """Load + resolve the `default_profile` from the (fixed-in-production,
-    injectable-in-tests) config root. Raises `ProfileError` on any defect —
+def _resolve_dispatch_profile(
+    repo: Path, config_root: Path | None, name: str | None = None
+):
+    """Load + resolve a named profile (or `default_profile` when `name` is
+    `None`) from the (fixed-in-production, injectable-in-tests) config root.
+    Raises `ProfileError` on any defect — including an unknown `name` — and
     callers map this to exit 3, never a silent default."""
 
     root = config_root if config_root is not None else _default_config_root(repo)
     profiles = load_profiles(root)
-    return resolve_profile(profiles)
+    return resolve_profile(profiles, name)
 
 
 def _cmd_test(args: argparse.Namespace, *, config_root: Path | None = None) -> int:
     repo = _repo_root()
     try:
-        profile = _resolve_dispatch_profile(repo, config_root)
+        profile = _resolve_dispatch_profile(repo, config_root, name=args.profile)
         base_cmd = command_for(profile, "test")
     except ProfileError as exc:
         print(f"gleipnir-sandbox: {exc}", file=sys.stderr)
@@ -160,7 +163,7 @@ def _cmd_test(args: argparse.Namespace, *, config_root: Path | None = None) -> i
 def _cmd_lint(args: argparse.Namespace, *, config_root: Path | None = None) -> int:
     repo = _repo_root()
     try:
-        profile = _resolve_dispatch_profile(repo, config_root)
+        profile = _resolve_dispatch_profile(repo, config_root, name=args.profile)
         lint_cmd = list(command_for(profile, "lint"))
     except ProfileError as exc:
         print(f"gleipnir-sandbox: {exc}", file=sys.stderr)
@@ -229,11 +232,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_test = sub.add_parser(
         "test", help="run the configured test command in-container with coverage"
     )
+    p_test.add_argument(
+        "--profile",
+        default=None,
+        help=(
+            "sandbox profile name to dispatch (default: the config's "
+            "default_profile); must be an option so it is parsed BEFORE "
+            "the pytest_args REMAINDER positional below and is never "
+            "swallowed into it"
+        ),
+    )
     p_test.add_argument("pytest_args", nargs=argparse.REMAINDER)
     p_test.set_defaults(func=_cmd_test)
 
     p_lint = sub.add_parser(
         "lint", help="run the configured lint/compile check in-container"
+    )
+    p_lint.add_argument(
+        "--profile",
+        default=None,
+        help="sandbox profile name to dispatch (default: the config's default_profile)",
     )
     p_lint.set_defaults(func=_cmd_lint)
 
