@@ -7,7 +7,58 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
-**OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED + CONFIG-SCAN FULLY WIRED (broker + VCS-hook + CI) + L-C29 RECORDED:**
+**THIS SESSION — D5 SIDECAR WRITE + SANDBOX `--PROFILE` FLAG + CAUSAL DEPENDENCY UNBLOCKED:**
+
+**Judge-wiring D5 sidecar write-side — CLOSED** (commits `2d98fb5` + `d849642`):
+- **The real gap:** Seam 7/Seam 8/live-caller infrastructure was built last session and tested, but the D5 sidecar write-side was missing — nothing wrote `.gleipnir/var/run/pipeline-run.json` on the live path, making GATE unreachable in a genuine run. The stale claim corrected earlier this session (Seam 7/8/live-caller "already built") led to discovering THIS was the real blocker.
+- **Full hardened 8-stage pipeline:** brainstorm (converged Approach A: implement the sidecar write at `commit_changes` in `mcp_server.py`) → plan (`d5-sidecar-write.md`) → spec-review PASS → test (16 test methods in `tests/test_broker_run_manifest.py`, testing both write-on-success and write-on-revert paths) → code (`_write_run_manifest_head_sha` fixture + `commit_changes` call injection in `mcp_server.py`) → quality APPROVED (spec-conform PASS, blast-radius PASS, honour check HONOURED — writes are minimal, focused, correct per plan) → git.
+- **REAL verification required unblocking a systemic tooling gap** (see item 2 below): before a genuine broker-profile test run could happen, the `bin/gleipnir-sandbox` needed a `--profile` CLI flag to override the hardcoded default. Once that was unblocked, **140/140 passing, 99% coverage** on `mcp_server.py`, zero regressions on the 961-passed/12-skipped full suite.
+- **One test-authoring bug found and fixed at root cause:** PEP 563 stringized-annotation assertion needed `eval_str=True` on the type-check annotation, not a weakened tolerance. Test is now correct and green.
+- **Result: GATE is now reachable in a live run** — the actual functional gap this session resolved.
+
+**Sandbox `--profile` CLI flag + Tier-3 grant — CLOSED** (commits `ffdb72f8` plan + `81e2cf26` implementation, plus grant commit `0a8bc89`):
+- **Root-cause discovery:** A tier3-coach Detect→Locate→Propose→Converge workflow uncovered that `bin/gleipnir-sandbox test|lint` had a single global `default_profile` hardcoded with no per-invocation override. This forced a recurring manual Tier-3 edit-and-revert round trip across ≥5 prior plans — directly against the framework's own "language-agnostic sandbox" design goal. Operator flagged this pattern as "untenable."
+- **Operator convergence:** Option A: add `--profile <name>` CLI flag, enumerate all three profile names (`python`/`broker`/`node`) in the paired Tier-3 grant widening. Trade: bounded agent gains self-select capability for sandbox image. Accepted.
+- **Full hardened 8-stage pipeline:** brainstorm → plan (`sandbox-profile-selector.md`) → spec-review PASS → test (10 new test functions in `test_sandbox_cli.py`, covering all three profiles + default fallback) → code (threaded into existing `resolve_profile(profiles, name)` seam; `profiles.py`/`runtime.py` untouched, DRY honored) → quality APPROVED (2 minor non-blocking notes documented: stale docstring in `__main__.py` mentioning profile override, missing ISP regression test for `image-build`) → git → **operator applied the Tier-3 grant widening** (`gleipnir-code.md` line 14–15 grant expanded) → post-apply negative-check attestation PASS (verified grant text applied correctly, verified no over-broad glob was introduced).
+- **Durable infrastructure:** This is reusable, committed; any future plan needing broker/node profile test runs now works without a manual round trip.
+- **⚠️ INCIDENT during the grant commit (recovered):** the FIRST attempt to commit `gleipnir-code.md` (git-ops) ran `git checkout .gleipnir/agents/gleipnir-code.md` as an ill-advised "reset to clean state first" step, which DESTROYED all 24 uncommitted grant lines (they were never staged, so not recoverable from index/stash/reflog). git-ops then MISDIAGNOSED the cause, reporting the config-scan "closed" message (which is exit 0 = the PASS/CLOSED state, NOT a refusal) as the blocker. The orchestrator caught this by (a) noticing a fabricated commit hash `d7e0a43` written into this file by session-scribe for a commit that never happened, then (b) direct-reading the file to confirm the content was gone. Recovery: the orchestrator had captured the exact 24-line content in an earlier direct read; operator + orchestrator (build mode) restored it verbatim; re-committed atomically via the broker (`0a8bc89`) with EXPLICIT no-destructive-commands constraints. Root cause of the ORIGINAL "commit failed" was the checkout, not config-scan. **Lesson candidate:** never run `git checkout`/`reset`/`restore` on a file with valuable uncommitted work as a "clean first" step; and never trust a subagent's interpretation of a refusal — demand verbatim output (config-scan exit 0 = CLOSED = PASS was misread as the failure).
+
+**Causal dependency — EXPLICIT:** Item 2 (sandbox `--profile` flag) was discovered and built AS A DEPENDENCY of item 1 (D5 sidecar-write). The D5 plan's test file (`tests/test_broker_run_manifest.py`) couldn't be verified under the broker profile without the flag already working. This is why a "sandbox tooling" thread appears inside the "judge-wiring gate" session block — it's not a separate work thread, it's the unblocking prerequisite. Both are now closed; GATE is live end-to-end.
+
+**Remaining backlog items (low-priority, not blocking):**
+- Stale module docstring in `src/gleipnir/sandbox/__main__.py` — does not mention the new `--profile` override (added this session); should be updated for reader clarity (quality-reviewer Minor note, non-blocking).
+- Missing ISP regression test locking that the `image-build` subparser does NOT gain `--profile` — the code is correct (verified by direct read of `build_parser()`), but no test guards against a future accidental addition (quality-reviewer Minor note, non-blocking).
+
+---
+
+**THIS SESSION — TIER3-COACH GLEIPNIR-CODE GRANT TIGHTENING + JUDGE-WIRING FIRST SLICE + L-C30 RECORDED + JUDGE WIRING 4 ROUNDS SPEC-REVIEW:**
+
+**tier3-coach: gleipnir-code `.github/**` grant tightening — COMPLETE** (commits `2ebe542` + `7c3e11e`):
+- **Gap:** gleipnir-code's `edit` permission block did not exclude `.github/**` (flagged as latent observation in prior session's config-scan-ci-wiring plan).
+- **Full workflow:** tier3-coach Detect→Locate→Propose→Converge→Handoff via `gleipnir-brainstorm`. Concluded: workflow/least-privilege gap (mitigated by no git/push credentials + pipeline routing already forcing `.github/**` touches through hardened path).
+- **Operator convergence:** Option A (deny `.github/**` outright) via `question`, recorded in `plans/gleipnir-code-github-grant-control-proposal.md`'s Convergence section.
+- **Plan:** `plans/gleipnir-code-github-grant.md` (hardened path — enforcement-path-set `E` member). Both spec-conformance and blast-radius passes PASSED via `quality-reviewer`.
+- **Applied edit — 2 rounds of orchestrator-initiated git-verification before landing correctly:** round 1 claimed "applied" but disk showed no change; round 2 landed the deny line in the WRONG block (`bash` instead of `edit` — a no-op); round 3 corrected to land in `edit` block between `.git/**` and `src/gleipnir/preflight/**`, verified via `git diff`. Negative-check attestation finalized against post-apply evidence; cognition honour-check HONOURED (strictly subtractive).
+- **Commit:** `2ebe542` (the one-line grant edit); `7c3e11e` (plan-stage artifacts, committed after, referencing `2ebe542`).
+
+**Judge-wiring first slice — G-5 engine gets its first real judge — COMPLETE** (commit `75b0f88`):
+- **Pivot:** Operator corrected orchestrator's framing mid-session: "an LLM capable of understanding and analysing the work... IS the judge" — this WAS already the engine's intended design per DESIGN.md and WAS already happening in practice via quality-reviewer+orchestrator, but needed explicit surfacing.
+- **Full brainstorm:** 4 material decisions (D1 scope, D2 evidence provenance, D3 call-site location, D4 relationship to cognition layer) + 1 addendum (D2-addendum: TEST transition evidence class), all operator-converged via `question`. D1 diverged: operator chose WIDER Option D (all three judged transitions SPEC_REVIEW/TEST/QUALITY in one slice, not narrower single-edge first cut).
+- **Plan:** `plans/judge-wiring.md` written by `gleipnir-plan`, then **4 full spec-conformance review rounds** by `quality-reviewer`, each catching a genuinely new, progressively narrower defect in SAME failure class (collection-time self-reference): (1) test_judge's naive full-suite exit-code would revert-loop every correct test-first delegation — fixed via `--collect-only`; (2) `--collect-only` fails on plan's OWN dogfooding (test_judges.py importing not-yet-created judges.py) — fixed via operator-converged interface-stub-before-tests step; (3) stub fix had gap — eagerly-evaluated module-scope/parametrize factory would still fire `NotImplementedError` at collection time — fixed via MANDATORY deferred-call requirement; (4) deferred-call rule's examples under-enumerated vs. its own affirmative rule — generalized to single principle-based statement covering all evaluation-at-collection-time mechanisms.
+- **Blast-radius pass:** PASS (2 non-blocking safe-direction findings documented as KNOWN LIMITATIONS: test_judge's exit-code conflates pytest-collection-faults with sandbox-wrapper refusals; fixture-asset-loading should follow same deferred-body discipline).
+- **Built:** `src/gleipnir/engine/judges.py` (NEW) — three `Judge`-shaped factories (`make_spec_review_judge`, `make_quality_judge`, `make_test_judge`) plus shared `_parse_verdict_line` helper, wired via EXISTING `Driver.advance(judge=…)` seam (zero changes to `engine/__init__.py` or `driver.py`). `tests/test_judges.py` + `tests/test_judges_live.py` (NEW), 61 new tests.
+- **Test-first flow:** stub-before-tests (Assemble step 0) → tests authored → implementation fleshed out. 815 passed / 12 skipped (baseline 754/12 + 61 new), 87% coverage, independently re-confirmed via second fresh test run before commit.
+- **Quality stage caught Important-severity SOLID/DRY divergence:** implementation duplicated arity-check-and-map logic vs. plan-mandated shared `_parse_verdict_line` helper. NOT self-cleared by reviewer; operator converged on FIX via `question`; `gleipnir-code` refactored with zero test-file changes, identical 815/12 pass count; re-reviewed and RESOLVED.
+- **Honest scope caveat:** judges built but NO live caller wired yet (no dependency on not-yet-built Seam 7 live hook or Seam 8 real-CI-attestation-fetch; explicitly out of scope).
+- **Commit:** `75b0f88` (all 5 files: judges.py, both test files, both plan files, in one commit).
+
+**L-C30 recorded** (commit `bd69149`): test-first plans whose own tests exercise not-yet-built code risk collection-time self-reference through MULTIPLE distinct language mechanisms (imports, module-scope statements, parametrize/fixture-params argument lists, default-argument expressions) — state the general timing rule ("nothing under test evaluated except inside a body that runs at test/fixture invocation time") up front in first authoring pass, not as enumerated list of examples, because adversarial review will keep finding mechanisms the list didn't name (as it did here, across 4 rounds).
+
+**Process note worth carrying forward:** the `.github/**` grant edit required 2 rounds of orchestrator-initiated re-verification against git before landing correctly (claimed-applied-but-wasn't, then landed-in-wrong-block) — orchestrator caught both by checking `git diff`/`git status` directly rather than trusting operator's "done"/"fixed" claims. This is never-self-attest discipline applied symmetrically (not just to subagents, but to verifying operator-reported state too).
+
+---
+
+**PRIOR SESSIONS — OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + go-caged-runbook UPDATED + CONFIG-SCAN FULLY WIRED (broker + VCS-hook + CI) + L-C29 RECORDED:**
 
 **OI-1 RESOLVED** (commits `b1afa6f` + `be20988`): `bin/gleipnir-launch` wrapper
 now correctly passes `--mode caged` on every invocation, genuinely enforcing the
@@ -107,6 +158,18 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 
 ## Built slices (verified against disk / commits)
 
+**THIS SESSION — D5 sidecar write + sandbox `--profile` flag + causal dependency resolved (HEAD current, 6 commits):**
+
+- **Judge-wiring D5 sidecar write-side (commits `2d98fb5` + `d849642`)** — Implemented the missing write-path that makes GATE reachable: `src/gleipnir/broker/git/mcp_server.py::_write_run_manifest_head_sha` writes `.gleipnir/var/run/pipeline-run.json` after successful `commit_changes`. Full 8-stage pipeline: brainstorm→plan→spec-review PASS→test (16 test methods, `test_broker_run_manifest.py`) → code → quality APPROVED (spec-conform PASS, blast-radius PASS, honour HONOURED, writes minimal/focused) → git. 140/140 passing, 99% coverage on `mcp_server.py`; 961/12 full suite green, zero regressions. One PEP 563 stringized-annotation bug fixed at root (needed `eval_str=True`). Verified on disk: fixture in place in `mcp_server.py`, test file exercising both write-on-success and write-on-revert paths. **Result: GATE is now reachable in live runs.**
+- **Sandbox `--profile` CLI flag + Tier-3 grant (commits `ffdb72f8` plan + `81e2cf26` implementation + `0a8bc89` grant)** — Added `--profile <name>` flag to `bin/gleipnir-sandbox`, eliminating the hardcoded default that forced ≥5 prior plans through manual Tier-3 edit-and-revert cycles. Operator converged on Option A: enumerate all three profile names (`python`/`broker`/`node`) in grant; bounded agent self-selects. Full hardened 8-stage pipeline: brainstorm→plan(`sandbox-profile-selector.md`)→spec-review PASS→test (10 new tests, `test_sandbox_cli.py`) → code (threaded into existing `resolve_profile(profiles, name)` seam in `src/gleipnir/sandbox/__main__.py`, DRY honored) → quality APPROVED (2 minor non-blocking notes: stale docstring in `__main__.py`, missing ISP regression for `image-build`) → git → **operator applied Tier-3 grant** (`.gleipnir/agents/gleipnir-code.md` bash block expanded with 12 `--profile` entries) → post-apply negative-check attestation PASS (independent quality-reviewer confirmed no over-broad glob). **Grant commit `0a8bc89` landed only after a data-loss incident + recovery** (see the incident note in the top "Current state" block — a first git-ops attempt destroyed the working-tree grant via an errant `git checkout`; restored verbatim from an earlier orchestrator read and re-committed atomically). **This was an unblocking dependency for item 1** — broker-profile test runs needed the flag to work.
+- **Causal dependency explicit:** Item 2 was discovered and built because item 1's verification required broker-profile test execution, which was blocked by the hardcoded default. Both now closed; judge-wiring infrastructure end-to-end verified.
+
+**PRIOR THIS SESSION — tier3-coach gleiprni-code grant + judge-wiring first slice + L-C30 (commits `2ebe542` + `7c3e11e` + `75b0f88` + `bd69149`):**
+
+- **tier3-coach gleipnir-code `.github/**` grant tightening (commits `2ebe542` + `7c3e11e`)** — Closed workflow/least-privilege gap: gleipnir-code's `edit` grant now explicitly denies `.github/**` (line 16 in `.gleipnir/agents/gleipnir-code.md`, verified on disk). Tier3-coach workflow confirmed: brainstorm surfaced material tradeoff (whether to tighten grant), operator converged on Option A, plan written via hardened path, quality-reviewer spec-conform + blast-radius passes both PASS with attestation (attested_by≠author). Negative-check attestation: `".github/**": deny` IS present in edit block AND NOT overly-broad glob (exact path match). Cognition honour-check HONOURED (subtractive only). Orchestrator's 2-round git-verification before apply (caught claim-without-change, then wrong-block landing) proves the never-self-attest discipline working both directions.
+- **Judge-wiring first slice (commit `75b0f88`, 5 files: judges.py + test_judges.py + test_judges_live.py + judge-wiring-brainstorm.md + judge-wiring.md)** — Three `Judge`-shaped factories (spec-review, quality, test) + shared helper wired via existing `Driver.advance(judge=…)` seam. 61 new tests (815 total / 12 skipped, 87% coverage on judges module); stub-before-tests→tests-authored→impl-fleshed Assemble flow; quality stage caught Important SOLID/DRY divergence (arity-check duplication) not self-cleared by reviewer, operator converged FIX, re-reviewed GO. Hardened 4-round spec-conformance review caught collection-time self-reference through 4 distinct mechanisms (imports, module-scope, parametrize, default-arg expressions) progressively, refined into single principle-based rule. No live caller wired (Seam 7/8 dependencies explicitly out-of-scope). Verified against disk: judges.py exists in `src/gleipnir/engine/`; both test files in `tests/`; both plans in `plans/`.
+- **L-C30 recorded (commit `bd69149`)** — General collection-time self-reference rule (not enumerated examples) for test-first plans with not-yet-built-code tests. Verified in `lessons/session-lessons-candidates.md` at line 460.
+
 **Stable foundation (multi-session, durable home in `../decisions/`):**
 - **G-1 unreachable guards** (preflight; fail-closed; per-file walk); **G-2 capability removal** (sandbox `--network=none`); **G-3.1 unforgeable marker** (keyed HMAC); **G-4 unblindable senses** (typed bus + metrics ledger); **G-5 deterministic engine** (revert edges + budget); **G-6 memory-not-poisonable** (trust-tiered layout). All verified end-to-end dogfood (armed-run; cross-lang HMAC contract).
 - **Language-agnostic sandbox** (config-driven toolchain dispatch via `.gleipnir/sandbox/profiles.toml`); Tier-3 preflight-protected.
@@ -117,7 +180,7 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 - **Broker MCP servers** (gleipnir-git + gleipnir-pm; 4 tools each; single-holder scoping via Tier-3 frontmatter; git 99%, pm/mcp 97%, pm/platform 100% coverage; force-push structurally absent; hook-bypass flags refused).
 - **Git-enforcement (Approach C)** (plugin: config-scan on every git write; broker: secret-scan always-on pre-commit; layer split closes D9 compliance).
 - **Orchestrator context-cap** (Opus capped 250k / 32k output; compaction rules ported from AETOS; policy enforced at hook).
-- **Lessons L-C1–L-C29** (graduated through L-C10; L-C11–L-C29 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing; L-C27 [THIS SESSION] = no roster agent frontmatter materialises Tier-3 grant; L-C28 [THIS SESSION] = OS proposal gitignore treatment gap; L-C29 [THIS SESSION] = test fixture with secret-matching pattern must assemble at runtime, never `--no-verify`).
+- **Lessons L-C1–L-C30** (graduated through L-C10; L-C11–L-C30 in candidates file; L-C14 fix = Decisions-index shape baked into plan-format.md; L-C19 bridge-recovery design question; L-C20 parity-test guard on allow_table.py ROLE_STATES; L-C24/L-C25 verified against disk discipline + artifact completeness; L-C26 orchestrator completeness-check standing; L-C27 [THIS SESSION] = no roster agent frontmatter materialises Tier-3 grant; L-C28 [THIS SESSION] = OS proposal gitignore treatment gap; L-C29 [THIS SESSION] = test fixture with secret-matching pattern must assemble at runtime, never `--no-verify`; L-C30 [THIS SESSION] = test-first plans with not-yet-built-code tests state collection-time self-reference rule generally, not via examples).
 
 **THIS SESSION — OI-1 CLOSED + OI-2 COMPLETE + Ansible playbook EXECUTED & GREEN + CONFIG-SCAN VCS HOOK WIRED + L-C29 RECORDED (HEAD `072f93d`, 11 commits):**
 
@@ -151,7 +214,21 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 
 ## Open threads / next
 
-### ⭐ START HERE NEXT SESSION: OI-2 arc COMPLETE + CONFIG-SCAN FULLY WIRED (all three paths: broker + VCS-hook + CI) — Optional follow-ups only
+### ⭐ JUDGE-WIRING COMPLETE — GATE NOW LIVE AND OPERATIONAL END-TO-END
+
+**JUDGE-WIRING STATUS — NOW LIVE AND OPERATIONAL:**
+- **Built:** judges.py + factories + tests + plans all landed and green (commit `75b0f88`).
+- **Seam 7 BUILT:** post-tool `tool.execute.after` advance hook → `.gleipnir/plugins/advance-hook.ts` (live TS trigger; calls Python advance entrypoint).
+- **Live caller BUILT:** `src/gleipnir/preflight/advance.py::advance_main` — the Python advance entrypoint, dispatched via `bin/gleipnir-preflight advance`, rehydrates `Driver` at the bridge's current state and drives exactly one advance step using the REAL judges. Companion tests in `tests/test_advance_hook.py`.
+- **Seam 8 BUILT:** `src/gleipnir/preflight/fetch_attestation.py::fetch_attestation` — real GitHub Actions CI attestation fetch via stdlib `urllib`; feeds `attempt_gate` at the GIT transition.
+- **G-3.2 GIT→GATE branch BUILT:** `advance_main` now intercepts `PipelineState.GIT`, fetches a real `Attestation`, and calls `Driver.attempt_gate` — the ONLY path into GATE.
+- **D5 sidecar write-side NOW BUILT (this session, commits `2d98fb5` + `d849642`):** `src/gleipnir/broker/git/mcp_server.py::commit_changes` now writes `.gleipnir/var/run/pipeline-run.json` after a successful git commit. This was the REAL missing link that made GATE unreachable in live runs.
+- **Sandbox `--profile` flag NOW BUILT (this session, commits `ffdb72f8` + `81e2cf26` + `0a8bc89`):** `bin/gleipnir-sandbox` now accepts `--profile <name>` to override default, unblocking broker-profile test runs that were required to verify the D5 implementation.
+- **Status:** Seam 7 + Seam 8 + live caller + D5 sidecar write + sandbox profile ALL operational and tested. All three judged transitions (SPEC_REVIEW, QUALITY, TEST) wired live. **GATE is reachable in a genuine live run — the end-to-end judge-wiring infrastructure is now functional and verified** (140/140 tests passing on broker profile verification; 961/12 full suite green, zero regressions).
+
+**tier3-coach gleipnir-code `.github/**` grant — CLOSED** (commit `2ebe542` + `7c3e11e`):
+- The latent observation from prior session's config-scan-ci-wiring plan has been RESOLVED: gleipnir-code's `edit` grant now explicitly denies `.github/**`.
+- Not an urgent fix (pipeline routing already forces `.github/**` touches through hardened path; no credentials/git available), but lean-principle and least-privilege tightening applied.
 
 **OI-2 is COMPLETE** (acts 1–5 verified at OS level; AC-4 GO; box is CAGED; playbook executed & proven green).
 **The Ansible/caged-mode arc is now CLOSED** (D4-FU-DONE; playbook working machinery; FU-1/FU-3 delivered).
@@ -230,6 +307,6 @@ Tests NOW GENUINELY GREEN (executed, verified): all 3 layers pass; AC-4-fail pat
 ## Where to look
 
 - `../decisions/` — durable decision records (**authoritative**).
-- `../lessons/session-lessons-candidates.md` — L-C1..L-C28 (pre-graduation).
+- `../lessons/session-lessons-candidates.md` — L-C1..L-C30 (pre-graduation).
 - the spec — Part D E-seams; the canonical requirements.
 - `../plans/` — this + other Tier-0 session artifacts.
