@@ -7,6 +7,15 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
+**Sandbox cleanup backlog (MINOR items from sandbox-profile-selector session) — CLOSED** (commits `501ada2` + `b7b16e8`):
+- **Item 1: Stale module docstring in `src/gleipnir/sandbox/__main__.py`** — Now documents the `--profile` override for `test`/`lint` (default_profile fallback, fail-closed exit-3 behavior via `resolve_profile`) and explicitly states `image-build` does NOT accept `--profile`.
+- **Item 2: Missing ISP regression test** — Added `test_image_build_subparser_has_no_profile_flag` in `tests/test_sandbox_cli.py`, dual assertion (attribute-absence + SystemExit-on-flag), mirroring the existing `test_lint_subparser_has_no_image_flag` precedent.
+- **Pipeline:** Full hardened 8-stage (both touched paths `src/**`, `tests/**` in disqualifier set X) — brainstorm (`sandbox-cleanup-brainstorm.md`, converged cleanly, Reversibility Filter resolved one two-way-door decision in-brief, no operator convergence needed) → plan (`sandbox-cleanup.md`, Gate-1 case (i) OOP/functional, Design Intent: ISP boundary + docs-CLI sync, both falsifiable) → spec-review PASS (zero defects, all exact-wording/exact-code claims verified byte-for-byte against disk) → test+code (gleipnir-code: test written first, passed green against unmodified code proving pre-existing invariant, then docstring edit applied; 962 passed/12 skipped before AND after, zero regressions) → quality GO (blast-radius pass clean, honour check HONOURED on both Design Intents, independently corroborated `image-build`'s parser registers only `--image`) → git (two commits: `501ada2` code+test, `b7b16e8` plan artifacts, per repo code-then-plans convention) → gate (orchestrator: pipeline closed on subagent-produced evidence chain).
+- **Not enforcement-bearing:** Axis 2 didn't fire (no `.gleipnir/agents/**`, no permission/grant blocks), so standard single spec-conformance pass + standard blast-radius/honour-check quality pass, not dual negative-check attestation.
+- **Backlog fully closed:** both Minor items from the sandbox-profile-selector session are resolved; nothing outstanding from that plan remains.
+
+---
+
 **THIS SESSION — D5 SIDECAR WRITE + SANDBOX `--PROFILE` FLAG + CAUSAL DEPENDENCY UNBLOCKED:**
 
 **Judge-wiring D5 sidecar write-side — CLOSED** (commits `2d98fb5` + `d849642`):
