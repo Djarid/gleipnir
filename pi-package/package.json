@@ -1,0 +1,30 @@
+{
+  "name": "@gleipnir/pi-package",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gleipnir S1 primitive-proof slice for the pi.dev-native re-expression: a tool_call block-hook enforcing a role->capability table (CRUX 1) and a depth-capped createAgentSession delegation tool (CRUX 2), for ONE role. See pi-dev-replatform-first-slice.md.",
+  "keywords": [
+    "pi-package"
+  ],
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./src/enforcement.ts",
+      "./src/delegate.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test test/enforcement.test.ts test/delegate.test.ts",
+    "lint": "tsc --noEmit -p tsconfig.json"
+  }
+}
