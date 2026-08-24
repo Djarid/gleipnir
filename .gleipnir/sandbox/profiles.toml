@@ -61,3 +61,25 @@ test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_g
 lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
 coverage = { args = ["--cov=src/gleipnir/broker", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
 test_selector_prefix = false
+
+# Pi/TypeScript profile. Runs the S1 pi.dev primitive-proof slice's tests
+# (pi-package/test/*.test.ts) in the bounded gleipnir-sandbox-pi image, which
+# is the ONLY sandbox image carrying pi's peer packages + a TypeScript compiler.
+# The S1 tests import @earendil-works/pi-coding-agent (+ siblings) and typebox;
+# those + typescript are pre-installed at BUILD time so test runs need NO
+# network (--network=none holds). Uses node:test + --experimental-strip-types
+# (node 22.6+; the image ships node 22.x), the lowest-new-dependency TS runner;
+# if S1 test files use non-strippable TS, add --experimental-transform-types to
+# the test argv (the runner stays node:test). Scoped to pi-package/test/ so the
+# pi suite runs against the pi image without pulling the whole tree.
+#
+# Image is digest-pinned per the strict image rule (profiles.py::_validate_image).
+# Built from ./Containerfile.pi (node:22-slim digest-pinned + npm-installed pins);
+# digest resolved via `podman inspect gleipnir-sandbox-pi --format '{{.Digest}}'`.
+# Peer-dep resolvability empirically verified (RESOLVE_OK, --network=none, ro /work).
+[profile.pi]
+image = "localhost/gleipnir-sandbox-pi@sha256:e6bf277baf3a2511e6af0bfc431e99a4aebd50d0921343709e471a3519acb27d"
+test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts"]
+lint = ["npx", "tsc", "--noEmit", "-p", "pi-package/tsconfig.json"]
+coverage = { unavailable = true, justified = "node:test built-in TS coverage deferred; S1 primitive-proof slice, no coverage tool wired (mirrors node profile)" }
+test_selector_prefix = false

@@ -46,6 +46,10 @@ permission:
     "./bin/gleipnir-sandbox lint --profile python": allow
     "./bin/gleipnir-sandbox lint --profile broker": allow
     "./bin/gleipnir-sandbox lint --profile node": allow
+    "bin/gleipnir-sandbox test --profile pi": allow
+    "bin/gleipnir-sandbox lint --profile pi": allow
+    "./bin/gleipnir-sandbox test --profile pi": allow
+    "./bin/gleipnir-sandbox lint --profile pi": allow
     "git*": deny
     "gh*": deny
     "glab*": deny

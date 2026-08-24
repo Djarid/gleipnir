@@ -8,7 +8,7 @@
 # pre-installed at BUILD time below so test/lint runs need NO network at run
 # time — the entrypoint runs with --network=none.
 #
-# Peer packages are installed into /node_modules AT THE FILESYSTEM ROOT, NOT
+# Peer packages are resolvable at /node_modules AT THE FILESYSTEM ROOT, NOT
 # under /work and NOT via `npm install -g`. The repo is bind-mounted READ-ONLY
 # at /work at run time (see src/gleipnir/sandbox/runtime.py), so anything
 # baked under /work/** is masked by that mount; a `-g` prefix is not an
@@ -17,8 +17,18 @@
 # that (a) survives the ro /work mount and (b) is reached by Node's ESM
 # `node_modules` ancestor-directory walk from /work/pi-package/test/. See
 # .gleipnir/plans/pi-sandbox-profile.md (D3 / Finding-1) for the full
-# discussion, including the caveat that root-level reachability is verified
-# empirically (Assemble §1a), not merely asserted here.
+# discussion.
+#
+# IMPLEMENTATION NOTE (verified empirically, Assemble §1a, this build):
+# `npm install` run with cwd=/ fails with npm's "Tracker idealTree already
+# exists" bug (npm cannot treat the filesystem root as a package context).
+# So the packages are installed into a real subdirectory /opt/pi-deps and
+# /node_modules is symlinked to /opt/pi-deps/node_modules — Node's ESM
+# ancestor-walk follows the symlink at the root level exactly as it would a
+# real /node_modules. Confirmed: a `--network=none`, ro-/work `import()` of
+# @earendil-works/pi-coding-agent + typebox from /work/pi-package prints
+# RESOLVE_OK (no ERR_MODULE_NOT_FOUND). Root-level reachability is thus
+# verified, not asserted.
 #
 # Six top-level peer-dep pins (D2), reproducibility-faithful to what pi's own
 # dependency graph resolves to as of this image's authoring — no floating
@@ -34,17 +44,20 @@
 # base; never rely on a moving tag.
 FROM docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 
-# Peer packages + TypeScript, installed into /node_modules at the filesystem
-# ROOT (an ancestor of /work/pi-package/test/ that survives the ro /work
-# mount) — NOT `npm install -g`, NOT under /work. Pre-installed at build time
-# so test/lint runs need NO network (--network=none holds).
-RUN cd / && npm install --no-package-lock \
+# Peer packages + TypeScript, installed into /opt/pi-deps and exposed at the
+# filesystem ROOT via a /node_modules symlink (an ancestor of
+# /work/pi-package/test/ that survives the ro /work mount) — NOT `npm install
+# -g`, NOT under /work, NOT a direct cwd=/ install (npm idealTree bug).
+# Pre-installed at build time so test/lint runs need NO network
+# (--network=none holds).
+RUN mkdir -p /opt/pi-deps && cd /opt/pi-deps && npm init -y >/dev/null 2>&1 && npm install --no-package-lock \
     @earendil-works/pi-coding-agent@0.84.2 \
     @earendil-works/pi-agent-core@0.84.2 \
     @earendil-works/pi-ai@0.84.3 \
     @earendil-works/pi-tui@0.84.3 \
     typebox@1.3.7 \
-    typescript@5.9.3
+    typescript@5.9.3 \
+  && ln -s /opt/pi-deps/node_modules /node_modules
 
 # Default workdir matches the run-argv's -w /work (the ro source bind mount).
 WORKDIR /work
