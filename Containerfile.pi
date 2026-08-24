@@ -1,0 +1,54 @@
+# S-2 sandbox image (pi profile): the bounded, ephemeral environment in which
+# the S1 pi.dev primitive-proof slice's TypeScript tests
+# (pi-package/test/*.test.ts) run, so agent-authored TS never executes on the
+# host (G-2 bounded blast radius). Mirrors the shape of ./Containerfile.node.
+#
+# The S1 tests import pi's peer packages (@earendil-works/pi-coding-agent +
+# siblings) and typebox. Those packages, plus the TypeScript compiler, are
+# pre-installed at BUILD time below so test/lint runs need NO network at run
+# time — the entrypoint runs with --network=none.
+#
+# Peer packages are installed into /node_modules AT THE FILESYSTEM ROOT, NOT
+# under /work and NOT via `npm install -g`. The repo is bind-mounted READ-ONLY
+# at /work at run time (see src/gleipnir/sandbox/runtime.py), so anything
+# baked under /work/** is masked by that mount; a `-g` prefix is not an
+# ancestor directory of /work/pi-package/, and Node's ESM resolver ignores
+# `NODE_PATH` entirely. /node_modules (root) is the only node_modules location
+# that (a) survives the ro /work mount and (b) is reached by Node's ESM
+# `node_modules` ancestor-directory walk from /work/pi-package/test/. See
+# .gleipnir/plans/pi-sandbox-profile.md (D3 / Finding-1) for the full
+# discussion, including the caveat that root-level reachability is verified
+# empirically (Assemble §1a), not merely asserted here.
+#
+# Six top-level peer-dep pins (D2), reproducibility-faithful to what pi's own
+# dependency graph resolves to as of this image's authoring — no floating
+# `latest`/`^`/`*` on these six. Transitive deps below them float without a
+# committed lockfile (D8: accepted, bounded gap — the built image is still
+# digest-pinned once built).
+#
+# Pinned by digest below so the image is reproducible and not silently moved.
+# This image deliberately contains NO source, NO credentials, NO keys.
+
+# node:22-slim (linux/arm64 + linux/amd64 multi-arch digest). Same base digest
+# as ./Containerfile.node. Update the digest deliberately when bumping the
+# base; never rely on a moving tag.
+FROM docker.io/library/node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
+
+# Peer packages + TypeScript, installed into /node_modules at the filesystem
+# ROOT (an ancestor of /work/pi-package/test/ that survives the ro /work
+# mount) — NOT `npm install -g`, NOT under /work. Pre-installed at build time
+# so test/lint runs need NO network (--network=none holds).
+RUN cd / && npm install --no-package-lock \
+    @earendil-works/pi-coding-agent@0.84.2 \
+    @earendil-works/pi-agent-core@0.84.2 \
+    @earendil-works/pi-ai@0.84.3 \
+    @earendil-works/pi-tui@0.84.3 \
+    typebox@1.3.7 \
+    typescript@5.9.3
+
+# Default workdir matches the run-argv's -w /work (the ro source bind mount).
+WORKDIR /work
+
+# No ENTRYPOINT/CMD: the entrypoint argv (node --test ... / npx tsc ...) is
+# supplied per-run by src/gleipnir/sandbox/runtime.py's build_run_argv, so the
+# image stays a generic bounded executor, not a baked-in single command.

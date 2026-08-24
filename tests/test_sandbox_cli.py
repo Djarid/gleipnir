@@ -92,6 +92,26 @@ test_selector_prefix = false
 """
 
 
+# `pi-sandbox-profile` plan (`.gleipnir/plans/pi-sandbox-profile.md`): the
+# tracked `tests/fixtures/sandbox_profiles.toml` fixture declares only
+# `python`+`node` — no `pi`. As with `_BROKER_TOML` above, a pi-bearing test
+# config is authored inline via `_write_config` rather than editing the
+# shared tracked fixture (keeps the shared fixture's blast radius unchanged).
+# Mirrors the plan's Tier-3 write-spec `[profile.pi]` block exactly in shape
+# (image/test/lint/coverage/test_selector_prefix key set), with a placeholder
+# digest standing in for the real operator-applied one.
+_PI_TOML = """
+default_profile = "pi"
+
+[profile.pi]
+image = "localhost/gleipnir-sandbox-pi@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts"]
+lint = ["npx", "tsc", "--noEmit", "-p", "pi-package/tsconfig.json"]
+coverage = { unavailable = true, justified = "node:test built-in TS coverage deferred; S1 primitive-proof slice, no coverage tool wired (mirrors node profile)" }
+test_selector_prefix = false
+"""
+
+
 # ---------------------------------------------------------------------------
 # Parser: agent-facing verb set does not widen
 # ---------------------------------------------------------------------------
@@ -440,6 +460,89 @@ def test_profile_broker_lint_selects_broker_lint_command(
     # D2's unconditional pycache redirect still applies regardless of which
     # profile was reached via --profile (profile-agnostic in _cmd_lint).
     assert ("PYTHONPYCACHEPREFIX", "/work/.scratch/pycache") in seen["extra_env"]
+
+
+def test_profile_pi_test_selects_pi_image_and_command(
+    monkeypatch, captured_exec, tmp_path, capsys
+):
+    """[pi-sandbox-profile plan, AC-3/AC-4/AC-5/AC-7] `--profile pi` resolves
+    and dispatches the pi profile's configured TEST command + digest-ref
+    image, with honest (not fabricated) coverage — mirrors the broker-profile
+    dispatch test's shape exactly, monkeypatched `prepare_sandbox_run`, no
+    real container spawned."""
+    config_root = _write_config(tmp_path, _PI_TOML)
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["image"] = image
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", image, *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["test", "--profile", "pi"], config_root=config_root)
+    assert rc == 0
+    # AC-3: image is a digest ref (name@sha256:<64 lowercase hex>), not a
+    # bare tag.
+    assert seen["image"] == (
+        "localhost/gleipnir-sandbox-pi@sha256:"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    )
+    assert seen["cmd"] == [
+        "node", "--experimental-strip-types", "--test",
+        "pi-package/test/enforcement.test.ts",
+        "pi-package/test/delegate.test.ts",
+    ]
+    # no coverage args ever appended for pi (honest degradation, mirrors node)
+    assert not any(c.startswith("--cov") for c in seen["cmd"])
+    assert seen["extra_env"] == []
+    err = capsys.readouterr().err
+    # AC-5: honest coverage.unavailable, never a fabricated number.
+    assert "coverage: unavailable (justified:" in err
+    assert "%" not in err.split("coverage: unavailable")[-1].split("\n")[0]
+
+
+def test_profile_pi_lint_selects_pi_lint_command(
+    monkeypatch, captured_exec, tmp_path
+):
+    """[pi-sandbox-profile plan, AC-3/AC-4/AC-7 lint half] `lint --profile
+    pi` likewise resolves and dispatches the pi profile's LINT command
+    (`npx tsc --noEmit`) against the digest-ref pi image."""
+    config_root = _write_config(tmp_path, _PI_TOML)
+    seen = {}
+
+    def fake_prepare(cmd, *, repo_root, scratch_dir, image, extra_env=()):
+        seen["cmd"] = list(cmd)
+        seen["image"] = image
+        seen["extra_env"] = list(extra_env)
+        return ["podman", "run", image, *cmd]
+
+    monkeypatch.setattr(cli, "prepare_sandbox_run", fake_prepare)
+    rc = cli.main(["lint", "--profile", "pi"], config_root=config_root)
+    assert rc == 0
+    assert seen["image"] == (
+        "localhost/gleipnir-sandbox-pi@sha256:"
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    )
+    assert seen["cmd"] == ["npx", "tsc", "--noEmit", "-p", "pi-package/tsconfig.json"]
+    # D2's unconditional pycache redirect is python-lint-specific; the pi
+    # lint command is not a compileall invocation, so no pycache env var is
+    # asserted here (it is simply absent, not a regression).
+
+
+def test_profile_pi_unknown_before_toml_applied_still_fails_closed(
+    captured_exec, python_config_root
+):
+    """[pi-sandbox-profile plan, AC-9 — fail-closed regression guard]
+    BEFORE the operator applies the `[profile.pi]` Tier-3 edit to the real
+    `.gleipnir/sandbox/profiles.toml`, `--profile pi` must fail closed via
+    the EXISTING `resolve_profile`->`ProfileError` path (exit 3, never
+    dispatches) against the tracked python+node fixture, which does not yet
+    define `pi`. Guards against a regression once `"pi"` is added as a known
+    profile name elsewhere (e.g. accidentally treated as always-resolvable)."""
+    rc = cli.main(["test", "--profile", "pi"], config_root=python_config_root)
+    assert rc == 3
+    assert captured_exec == []
 
 
 def test_profile_node_test_selects_node_image_and_command(
