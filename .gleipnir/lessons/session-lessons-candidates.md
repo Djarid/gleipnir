@@ -487,6 +487,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-2
 
 ---
 
+## L-C33 — Mid-session Tier-3 permission-grant edits are not visible to fresh subagent delegations; a full session restart is required
+
+**Observed:** a `--profile pi` bash grant was added to `.gleipnir/agents/gleipnir-code.md` mid-session (build-mode commit). Two SEPARATE, independently-spawned `gleipnir-code` subagent `task` delegations after that commit both saw an identical STALE permission rule set that omitted the new grant, even though the on-disk file genuinely had it and each `task` call spawns a fresh subagent context. Only a full top-level session restart made the grant visible to new subagent delegations.
+
+**Proposed lesson:** when a Tier-3 permission-grant edit lands mid-session, do not assume the next `task` delegation will see it just because it's a fresh subagent spawn — the permission rule set appears to load once per top-level session, not per subagent task. Either verify the grant is live with a cheap, low-cost probe before delegating real work that depends on it, or expect to need a session restart, and say so proactively rather than letting a real delegation discover the staleness as a failure.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-24 · session unknown · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C34 — Build-mode capability is for actions no roster role can reach at all, never for authoring pipeline-owned code
+
+**Observed:** while in build mode (granted bash/edit to build a container image and apply Tier-3 sandbox config no roster role can touch), the orchestrator began directly editing pi-package application source (`delegate.ts`) to fix real TypeScript type errors, instead of routing the fix back through `gleipnir-code`. The operator corrected this sharply and immediately ("don't write fucking code as build!! you will go off the rails!! in Orch... proceed"), then had the same fix re-applied correctly via a `gleipnir-code` delegation instead.
+
+**Proposed lesson:** build-mode bash/edit access is legitimate ONLY for acts genuinely unreachable by any roster role (Tier-3 config file edits, `podman build`/image digest-pinning, OS-level acts) — never for authoring or fixing application/test code that a roster role is bound to and that the pipeline's test-first/spec-review/quality gates exist to review. The instant a build-mode action starts writing pipeline-owned source, stop and route it back through delegation instead, even if it would be faster in the moment.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-24 · session unknown · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
