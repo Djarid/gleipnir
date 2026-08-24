@@ -2,7 +2,7 @@
   "name": "@gleipnir/pi-package",
   "version": "0.1.0",
   "private": true,
-  "description": "Gleipnir S1 primitive-proof slice for the pi.dev-native re-expression: a tool_call block-hook enforcing a role->capability table (CRUX 1) and a depth-capped createAgentSession delegation tool (CRUX 2), for ONE role. See pi-dev-replatform-first-slice.md.",
+  "description": "Gleipnir pi.dev-native enforcement slice (S2): a tool_call block-hook enforcing the full 8-role deny-by-default capability table (typed baseTools/customTools/brokerTools partition, G-2 git-broker sole-holder) and a depth-capped createAgentSession delegation tool with customTools pass-through for reachable nested delegation. See .gleipnir/plans/pi-dev-replatform-s2.md.",
   "keywords": [
     "pi-package"
   ],
@@ -24,7 +24,7 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/enforcement.test.ts test/delegate.test.ts",
+    "test": "node --experimental-strip-types --test test/enforcement.test.ts test/delegate.test.ts test/roleTable.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json"
   }
 }

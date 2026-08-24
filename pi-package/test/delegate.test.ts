@@ -24,12 +24,18 @@ import { afterEach, test } from "node:test";
 
 import { AgentSession } from "@earendil-works/pi-coding-agent";
 
-import delegateExtension, { resolveChildTools } from "../src/delegate.ts";
+import delegateExtension, {
+  DELEGATE_TOOL_NAME,
+  buildDelegateTool,
+  resolveChildCustomTools,
+  resolveChildTools,
+} from "../src/delegate.ts";
 import enforcement from "../src/enforcement.ts";
 import { ROLE_ALLOW_SETS } from "../src/roleTable.ts";
 import { clearActiveRole, setActiveRole } from "../src/activeRole.ts";
 import {
   DepthCapExceededError,
+  getCap,
   getDepth,
   resetDepth,
   setCap,
@@ -42,13 +48,14 @@ afterEach(() => {
   setCap(3); // restore the module default between tests
 });
 
-test("AC-5: resolveChildTools returns exactly the delegated role's allow-set", () => {
+test("AC-5: resolveChildTools returns exactly the delegated role's base+custom allow-set", () => {
   const tools = resolveChildTools("gleipnir-code");
 
+  const entry = ROLE_ALLOW_SETS["gleipnir-code"];
   assert.deepEqual(
     new Set(tools),
-    new Set(ROLE_ALLOW_SETS["gleipnir-code"]),
-    "child's tool set must equal the role's allow-set, no more, no less",
+    new Set([...entry.baseTools, ...entry.customTools]),
+    "child's tool set must equal the role's base+custom allow-set, no more, no less (broker partition is not projected into `tools`)",
   );
 });
 
@@ -203,14 +210,18 @@ test("AC-9: the child's explicitly re-wired enforcement extension blocks a call 
   // before the child runs).
   setActiveRole("gleipnir-code");
 
-  // "bash" is deliberately absent from gleipnir-code's allow-set (roleTable.ts).
-  const denied = await handler!({ toolName: "bash" }, { hasUI: true });
+  // D1 correction: `bash` is now a real baseTools member for gleipnir-code
+  // (present-but-arg-scoped, AC-21 in roleTable.test.ts), so it can no longer
+  // serve as this role's negative probe. "write" is deliberately absent from
+  // gleipnir-code's allow-set (roleTable.ts) and remains a valid denial probe.
+  const denied = await handler!({ toolName: "write" }, { hasUI: true });
   assert.equal(denied?.block, true, "AC-9: a denied tool call reaching the child must be blocked");
   assert.ok(denied && denied.reason.length > 0);
 
   // And an allowed one still passes for the child, proving this isn't a
-  // blanket deny that would make the child useless.
-  const allowed = await handler!({ toolName: "read_file" }, { hasUI: true });
+  // blanket deny that would make the child useless. "read" is a real SDK base
+  // ToolName in gleipnir-code's baseTools (S2 vocab).
+  const allowed = await handler!({ toolName: "read" }, { hasUI: true });
   assert.equal(allowed, undefined);
 });
 
@@ -308,19 +319,23 @@ test("AC-9-E2E: delegate.ts's real execute(), via a real createAgentSession chil
       }
     )._extensionRunner;
 
-    // "bash" is deliberately absent from gleipnir-code's allow-set
-    // (roleTable.ts) — the negative case AC-9-E2E exists to prove.
+    // D1 correction: `bash` is now a real baseTools member for gleipnir-code
+    // (present-but-arg-scoped, AC-21 in roleTable.test.ts), so it can no
+    // longer serve as this role's negative probe. "write" is deliberately
+    // absent from gleipnir-code's allow-set (roleTable.ts) — the negative
+    // case AC-9-E2E exists to prove.
     deniedResult = await runner.emitToolCall({
       type: "tool_call",
-      toolName: "bash",
+      toolName: "write",
       toolCallId: "ac9-e2e-denied",
       input: {},
     });
-    // "read_file" IS in gleipnir-code's allow-set — the positive control,
-    // so this test cannot pass by a hook that always blocks everything.
+    // "read" IS in gleipnir-code's allow-set (baseTools, S2 vocab) — the
+    // positive control, so this test cannot pass by a hook that always blocks
+    // everything.
     allowedResult = await runner.emitToolCall({
       type: "tool_call",
-      toolName: "read_file",
+      toolName: "read",
       toolCallId: "ac9-e2e-allowed",
       input: {},
     });
@@ -385,5 +400,149 @@ test("AC-9-E2E: delegate.ts's real execute(), via a real createAgentSession chil
     allowedResult,
     undefined,
     "AC-9-E2E: a real child session's real ExtensionRunner must allow an allowed tool call (positive control)",
+  );
+});
+
+// ============================================================================
+// S2 — D-A convergence: customTools pass-through + real nested depth-cap E2E
+// ============================================================================
+
+test("AC-11: resolveChildCustomTools projects a delegate-role's declared customTools from the table (DRY)", () => {
+  for (const role of ["orchestrator", "gleipnir-code"]) {
+    const projected = resolveChildCustomTools(role);
+    assert.ok(
+      projected.includes(DELEGATE_TOOL_NAME),
+      `${role} declares "delegate" in the table, so its projection must include it`,
+    );
+    // DRY: the projection must equal the table entry's customTools exactly,
+    // proving it is sourced from ROLE_ALLOW_SETS, not a hand-duplicated list.
+    assert.deepEqual(
+      new Set(projected),
+      new Set(ROLE_ALLOW_SETS[role].customTools),
+      `${role}'s projected customTools must equal its table entry, no more, no less`,
+    );
+  }
+});
+
+test("AC-12: a non-delegate child role does not receive delegate (deny-by-default through the pass-through)", () => {
+  const nonDelegateRoles = [
+    "git-ops",
+    "quality-reviewer",
+    "notify",
+    "project-mgr",
+    "gleipnir-brainstorm",
+    "gleipnir-plan",
+  ];
+  for (const role of nonDelegateRoles) {
+    const projected = resolveChildCustomTools(role);
+    assert.ok(
+      !projected.includes(DELEGATE_TOOL_NAME),
+      `${role} does NOT declare "delegate", so the pass-through must not widen it in`,
+    );
+  }
+});
+
+test("AC-12b: buildDelegateTool produces a re-passable definition (the self-referential recursion crux)", () => {
+  const def = buildDelegateTool();
+  assert.equal(def.name, DELEGATE_TOOL_NAME, "the definition must carry the delegate name");
+  assert.equal(typeof def.execute, "function", "the definition must carry an execute fn");
+  // Two independent builds are distinct objects (no shared-mutable-state hazard
+  // when a parent and a child each hold their own delegate definition).
+  assert.notEqual(buildDelegateTool(), def, "each build must be a fresh definition object");
+});
+
+test("AC-13/AC-14: nested delegation via a real re-invoked delegate is refused past the depth cap; counter restores", async () => {
+  // This composes the pass-through (a delegate-role child now RECEIVES a real
+  // `delegate` definition) with the depth-cap mechanism, WITHOUT a live model
+  // turn (the --network=none limit). We drive delegate.ts's real `execute`
+  // (captured via the registerTool-capturing shim, same pattern as AC-9-E2E)
+  // and, inside its guarded body, re-enter the SAME real execute the way a
+  // nested `delegate` call would, proving the cap catches the real
+  // re-invocation and the counter is restored afterward.
+  //
+  // Why this is a faithful E2E of the nested path (not a counter-only proof):
+  // the child's `customTools` genuinely carries the real `delegate` definition
+  // (proven separately by AC-11/AC-12b + the pass-through in delegate.ts), and
+  // the re-invocation runs the real execute -> real withDepthGuard -> real
+  // depth.ts counter, refusing with the real DepthCapExceededError-derived
+  // graceful message once depth === cap. The one thing not exercised is the
+  // model deciding to emit the nested tool_call (the named live-model-turn gap
+  // inherited from S1); the wiring + counter-under-real-nesting IS exercised.
+
+  setCap(2); // small cap so a nested re-invocation reaches it
+
+  // Capture delegate.ts's real execute.
+  type ExecFn = (
+    toolCallId: string,
+    params: { role: string; prompt: string },
+    signal: AbortSignal,
+    onUpdate: (u: unknown) => void,
+    ctx: unknown,
+  ) => Promise<{ content: Array<{ type: string; text: string }>; details: undefined }>;
+
+  let execute: ExecFn | undefined;
+  const fakePi = {
+    registerTool(def: { name: string; execute: ExecFn }) {
+      if (def.name === DELEGATE_TOOL_NAME) {
+        execute = def.execute;
+      }
+    },
+  };
+  delegateExtension(fakePi as unknown as Parameters<typeof delegateExtension>[0]);
+  assert.ok(execute, "delegate() must register a delegate execute fn");
+
+  // The AC-9-E2E technique: stub prompt so no live model/network is needed.
+  // For the NESTED proof, the outer child's stubbed prompt re-invokes the real
+  // `delegate` execute (a real nested delegate call), which itself enters the
+  // depth guard. We nest until the cap refuses. Because a real
+  // createAgentSession requires provider auth unreachable here, we exercise the
+  // re-invocation at the execute level directly (the layer the pass-through
+  // makes reachable), stubbing prompt to perform the nested call.
+  const originalPrompt = AgentSession.prototype.prompt;
+  let refusalSeen = false;
+
+  (
+    AgentSession.prototype as unknown as {
+      prompt: (this: AgentSession, text: string) => Promise<string>;
+    }
+  ).prompt = async function nestedPrompt(this: AgentSession): Promise<string> {
+    // Re-enter the real delegate execute as a NESTED delegate call. At the
+    // deepest level (depth === cap) the guard refuses and the real execute
+    // returns the graceful refusal textResult rather than throwing.
+    const nested = await execute!(
+      "nested-call",
+      { role: "gleipnir-code", prompt: "nested" },
+      new AbortController().signal,
+      () => {},
+      undefined,
+    );
+    const text = nested.content[0]?.text ?? "";
+    if (/depth cap/i.test(text)) {
+      refusalSeen = true;
+    }
+    return "outer stubbed turn";
+  };
+
+  try {
+    const result = await execute!(
+      "outer-call",
+      { role: "gleipnir-code", prompt: "outer" },
+      new AbortController().signal,
+      () => {},
+      undefined,
+    );
+    assert.ok(result.content[0]?.text, "outer execute must return a well-formed result");
+  } finally {
+    AgentSession.prototype.prompt = originalPrompt;
+  }
+
+  assert.ok(
+    refusalSeen,
+    `AC-13: a nested real re-invocation of delegate must be refused once depth === cap (${getCap()})`,
+  );
+  assert.equal(
+    getDepth(),
+    0,
+    "AC-14: the depth counter must be restored to 0 after the nested delegation chain (incl. a refusal)",
   );
 });

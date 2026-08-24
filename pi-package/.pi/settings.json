@@ -1,0 +1,4 @@
+{
+  "extensions": ["./src/enforcement.ts", "./src/delegate.ts"],
+  "defaultProjectTrust": "ask"
+}

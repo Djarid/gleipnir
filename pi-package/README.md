@@ -1,27 +1,53 @@
-# pi-package — S1 primitive-proof slice
+# pi-package — S2 (full 8-role roster) slice
 
 Status: **implemented and verified** — `bin/gleipnir-sandbox test --profile pi`
-(12/12 pass, including a real end-to-end `createAgentSession` child, see
-"D6 finding" below) and `bin/gleipnir-sandbox lint --profile pi` (clean) both
-ran successfully once the sandbox permission staleness from the prior session
-was cleared by a session restart. This package is the first buildable slice
-(S1) of the pi.dev-native re-expression of Gleipnir (Approach B,
-`pi-dev-replatform-brainstorm.md`), per the full ATLAS plan
-`.gleipnir/plans/pi-dev-replatform-first-slice.md`.
+(28/28 pass, including a real end-to-end `createAgentSession` child and a real
+nested-delegation depth-cap chain, see "D6 finding" and AC-13/14 below, plus
+the D1 coarse-presence fix's own proof, AC-21) and `bin/gleipnir-sandbox lint
+--profile pi` (clean). This package is the S2 slice of the pi.dev-native
+re-expression of Gleipnir, per the full ATLAS plan
+`.gleipnir/plans/pi-dev-replatform-s2.md` (which promotes the S1 one-role
+proof-of-mechanism, `pi-dev-replatform-first-slice.md`, to the full roster).
+
+**D1 correction applied (this session, `code` stage of the S2 plan).** A
+prior interrupted session left `ROLE_ALLOW_SETS_RAW`'s `baseTools` missing the
+scoped-but-real base tool for 5 roles (`edit` for `gleipnir-brainstorm`/
+`gleipnir-plan`; `bash` for `gleipnir-code`/`quality-reviewer`/`git-ops`) —
+a violation of the plan's coarse-presence rule ("present-but-scoped ⇒ in
+`baseTools`, with the restriction recorded in `bounds`"). This session fixed
+`roleTable.ts` in place, added `AC-21` (`test/roleTable.test.ts`) proving the
+corrected presence/absence and that each affected role's `bounds` is
+non-empty, and fixed the direct ripple this created in three existing negative
+probes that had used `"bash"` as a cross-role deny probe — see "D1 ripple
+fix" below.
 
 ## What this slice proves
 
-1. **CRUX 1 — enforcement.** A `tool_call` block hook
+1. **CRUX 1 — enforcement, full roster.** A `tool_call` block hook
    (`src/enforcement.ts`) reads a Gleipnir-owned role→capability table
    (`src/roleTable.ts`) and the current session's active role
    (`src/activeRole.ts`) to deny a not-allowed tool call and permit an
-   allowed one. Deny-by-default: unset role, unknown role, and unknown tool
-   all resolve to `false`.
-2. **CRUX 2 — delegation.** A `delegate` custom tool (`src/delegate.ts`)
-   spins up a role-bounded child session via `createAgentSession`, guarded
-   by a depth cap (`src/depth.ts`) that refuses runaway nesting (including
-   transitive/nested delegation) and always restores its counter, even on
-   failure (`try`/`finally`).
+   allowed one, for all **8 roster roles**, each a typed
+   `{ baseTools, customTools, brokerTools }` partition. Deny-by-default per
+   role: unset role, unknown role, and any unlisted tool resolve to `false`
+   (AC-16). **G-2 at the table level:** `git-ops` is the sole holder of a
+   git-broker name; every other role's `brokerTools` is empty (AC-17). Base
+   vocabulary is the real SDK `ToolName` union (`read | bash | edit | write |
+   grep | find | ls`); the S1 `read_file`/`write_file` names are retired
+   (AC-18). The table (and its nested partitions) is deep-frozen — it cannot
+   be widened at runtime (AC-19).
+2. **CRUX 2 — delegation, nested-reachable.** A `delegate` custom tool
+   (`src/delegate.ts`) spins up a role-bounded child session via
+   `createAgentSession`, guarded by a depth cap (`src/depth.ts`). S2 makes
+   nested delegation actually reachable end-to-end: a child whose role
+   declares `"delegate"` now RECEIVES the real `delegate` tool definition
+   (projected from the table via `resolveChildCustomTools`, DRY), so it can
+   re-invoke `delegate` — and the depth cap refuses that real nested
+   re-invocation, restoring the counter afterward (AC-11..AC-14). A
+   non-delegate child does not receive it (deny-by-default through the
+   pass-through, AC-12). The primary session's role is seeded at
+   `session_start` (`orchestrator`), guarded so a child's `session_start`
+   cannot clobber a pushed child role (AC-15).
 3. **D6 — the child-hook binding question.** See below. **Settled for the
    wiring-correctness question; one residual empirical gap remains, named
    explicitly.**
@@ -29,7 +55,7 @@ was cleared by a session restart. This package is the first buildable slice
 ## How to reproduce
 
 ```sh
-bin/gleipnir-sandbox test --profile pi   # node --test test/enforcement.test.ts test/delegate.test.ts
+bin/gleipnir-sandbox test --profile pi   # node --test enforcement + delegate + roleTable tests
 bin/gleipnir-sandbox lint --profile pi   # tsc --noEmit -p tsconfig.json
 ```
 
@@ -37,7 +63,7 @@ Both run inside the `gleipnir-sandbox-pi` container (`--network=none`,
 repo mounted read-only), which pre-installs the five pi peer packages +
 `typebox` + `typescript` at the filesystem-root `/node_modules` (see
 `Containerfile.pi`) — `pi-package/node_modules` is deliberately absent; do
-not add a local install. Confirmed reachable and live this session: 12/12
+not add a local install. Confirmed reachable and live this session: 28/28
 tests pass, lint is clean.
 
 ## Peer-dep resolution (AC-10)
@@ -104,8 +130,8 @@ of `delegate.ts`'s logic). That real `execute` runs its real body — real
 duration, restored in `finally`); inside the stub, `this` is the real session
 instance `execute` constructed (asserted `instanceof AgentSession`), and the
 test drives `this._extensionRunner.emitToolCall(...)` — the SDK's own
-real dispatch, per finding 1 — with a denied tool (`"bash"`, outside
-`gleipnir-code`'s allow-set) and an allowed one (`"read_file"`, inside it),
+real dispatch, per finding 1 — with a denied tool (`"write"`, outside
+`gleipnir-code`'s allow-set) and an allowed one (`"read"`, inside it),
 asserting block / pass respectively.
 
 **Why `prompt` had to be stubbed at all (the concrete, named empirical
@@ -129,31 +155,60 @@ above: no, there isn't one — the dispatch loop only ever sees
 case named directly above, which is a network/auth limitation, not a
 wiring-correctness one.
 
-## Known limitations for S2
+## S1 limitations — both RESOLVED in S2
 
-Two follow-ups surfaced by quality review, non-blocking for S1 but relevant
-to how S2 (the full 8-role roster) is scoped:
+The two follow-ups S1 quality review surfaced are now closed:
 
-1. **`customTools: []` makes nested `delegate` architecturally unreachable
-   end-to-end.** `delegate.ts` passes `customTools: []` to every child
-   unconditionally. Since `"delegate"` is itself a custom tool (not a base
-   SDK `ToolName`), a child never actually receives it — so a child can
-   **never** re-invoke `delegate` in a real, unstubbed system, even though
-   `roleTable.ts`'s allow-set includes `"delegate"` for the `gleipnir-code`
-   role. AC-7's "nested delegation" is therefore proven only at the
-   isolated `depth.ts` counter-mechanism level (already disclosed in
-   `delegate.test.ts:10-13`); end-to-end nested delegation is
-   architecturally unreachable as currently wired, not merely untested. S2
-   will need to either pass `customTools` through to children or otherwise
-   decide whether nested delegation is in scope at all.
-2. **Allow-set tool names don't match the SDK's real base `ToolName`s.**
-   `roleTable.ts`'s allow-set uses `"read_file"`/`"write_file"`, which do
-   not match the SDK's real base `ToolName`s (`read`, `bash`, `powershell`,
-   `edit`, `write`, `grep`, `find`, `ls`). This is already disclosed richly
-   in `test/delegate.test.ts`'s comments; it is recorded here too so it is
-   visible to the operator without reading test-file comments. S2's roster
-   expansion should reconcile the allow-set vocabulary against the SDK's
-   real tool names.
+1. **RESOLVED (D-A pass-through).** S1's `customTools: []` made nested
+   `delegate` architecturally unreachable end-to-end. S2 adds
+   `resolveChildCustomTools(role)` (DRY-projected from the same role table)
+   and passes the real `delegate` tool definition (`buildDelegateTool()`)
+   into a child whose role declares `"delegate"`. Nested delegation is now
+   reachable and the depth cap refuses it under a real re-invocation
+   (AC-13/AC-14). Deny-by-default is preserved through the pass-through: a
+   non-delegate child receives `[]` (AC-12).
+2. **RESOLVED (D-B vocabulary fix).** The S1 `read_file`/`write_file` names
+   are retired; `baseTools` now uses the real SDK `ToolName` union
+   (`read | bash | edit | write | grep | find | ls`), enforced by `tsc`
+   against the `ToolName` type and by a runtime membership check against
+   `SDK_BASE_TOOL_NAMES` (AC-18).
+
+## Named residual limits carried into S2 (NOT resolved — honest scope)
+
+- **Live-model-turn gap (inherited from S1, unchanged).** AC-9-E2E drives the
+  real `tool_call`/`emitToolCall` dispatch via a stubbed
+  `AgentSession.prototype.prompt`, because `createAgentSession` needs provider
+  auth unreachable under `--network=none`. A fully model-driven turn (no stub)
+  is not exercised. This is a network/auth limit, not a wiring-correctness
+  one.
+- **AC-13/14's nested-call mechanism is direct re-invocation, not
+  `emitToolCall` (named for description accuracy, a fifth residual item
+  alongside the three above).** Unlike AC-9-E2E, the AC-13/14 nested-depth-cap
+  test does NOT drive the nested call through
+  `this._extensionRunner.emitToolCall(...)`. From inside that same kind of
+  stubbed `AgentSession.prototype.prompt`, it re-invokes the module-level
+  captured `delegate` `execute` reference directly — a real nested
+  re-invocation of `delegate.ts`'s own execute, at the layer the pass-through
+  (`resolveChildCustomTools`) makes reachable. `quality-reviewer` confirmed
+  this is a legitimate, defensible technique that genuinely proves the
+  depth-cap-under-real-recursive-execute property; it is called out here only
+  so the mechanism is described accurately rather than implied to route
+  through `emitToolCall` like AC-9-E2E does.
+- **Argument-level (per-arg/per-path) enforcement is OUT of S2 scope,
+  captured-as-metadata.** The per-role `bounds` field in `roleTable.ts`
+  records each role's per-path/per-arg bound (e.g. `gleipnir-code` may `edit`
+  but not under `.gleipnir/**`; `git-ops` may `read` but not `.git/**`;
+  `quality-reviewer`'s bash is `git {diff,log,show,status}` only) so the
+  canonical table does not lose them — but S2 enforces only the COARSE
+  tool-presence allow/deny via `canUse`. Fine-grained `event.input`
+  inspection is S3/S7 (the E-1 argument-policy seam).
+- **`ToolName` is mirrored locally, not imported.** The SDK defines
+  `ToolName`/`allToolNames` only at the subpath
+  `.../dist/core/tools/index`, which its `exports` map does not expose (only
+  `.`, `./rpc-entry`, `./client`), and the root index does not re-export
+  them. So the union is declared verbatim in `roleTable.ts` and AC-18
+  guards against drift by asserting membership. Reconcile if a future SDK
+  release re-exports `ToolName` from root.
 
 ## Prior "capability wall" note (resolved)
 
@@ -161,7 +216,7 @@ An earlier delegation in this session's history reported both verification
 commands denied by a stale permission snapshot. That snapshot issue was
 cleared by a session restart (confirmed by the operator); `bin/gleipnir-sandbox
 test --profile pi` and `bin/gleipnir-sandbox lint --profile pi` are both live
-and were both run for real by this delegation (12/12 tests pass, lint clean).
+and were both run for real by this delegation (28/28 tests pass, lint clean).
 
 ## AC → test mapping
 
@@ -178,10 +233,24 @@ and were both run for real by this delegation (12/12 tests pass, lint clean).
 | AC-9 (child-hook binding, D6, module-level) | "AC-9: the child's explicitly re-wired enforcement extension blocks..." | `test/delegate.test.ts` |
 | AC-9-E2E (child-hook binding, D6, real end-to-end) | "AC-9-E2E: delegate.ts's real execute(), via a real createAgentSession child..." | `test/delegate.test.ts` |
 | AC-10 (package validity) | manual: `package.json` peers vs `dependencies` (see "Peer-dep resolution" above) | `package.json` |
+| AC-11 (pass-through projected from table, DRY) | "AC-11: resolveChildCustomTools projects a delegate-role's declared customTools..." | `test/delegate.test.ts` |
+| AC-12 (deny-by-default through pass-through) | "AC-12: a non-delegate child role does not receive delegate..." | `test/delegate.test.ts` |
+| AC-12b (re-passable delegate definition) | "AC-12b: buildDelegateTool produces a re-passable definition..." | `test/delegate.test.ts` |
+| AC-13/AC-14 (real nested depth-cap E2E via direct re-invocation of the captured `execute` from the stubbed `prompt` — NOT via `emitToolCall` — + counter restore) | "AC-13/AC-14: nested delegation via a real re-invoked delegate is refused past the depth cap..." | `test/delegate.test.ts` |
+| AC-15 (session_start orchestrator seed, guarded) | "AC-15: session_start seeds orchestrator on an empty stack, and does NOT clobber..." | `test/enforcement.test.ts` |
+| AC-16 (deny-by-default per role, all 8) | "AC-16: deny-by-default holds for every one of the 8 roles" + "AC-16 (hook): a denied tool blocks through the real hook..." | `test/roleTable.test.ts`, `test/enforcement.test.ts` |
+| AC-17 (G-2 git-broker sole-holder + inert name) | "AC-17: git-ops is the sole broker (git) holder..." + P2 pm-partition check | `test/roleTable.test.ts` |
+| AC-18 (SDK ToolName vocabulary fidelity) | "AC-18: base-tool vocabulary matches the SDK ToolName union..." | `test/roleTable.test.ts` |
+| AC-19 (frozen table, no runtime widening) | "AC-19: the table (including nested partitions) is frozen..." | `test/roleTable.test.ts` |
+| AC-20 (manifest + .pi/settings.json validity) | manual: `pi.extensions` resolves, no peer under `dependencies`, `.pi/settings.json` valid | `package.json`, `.pi/settings.json` |
+| AC-21 (D1 coarse-presence fix: present-but-scoped `edit`/`bash` in `baseTools` with `bounds` recorded; genuinely-denied stay absent) | "AC-21: D1 coarse-presence fix — present-but-scoped capabilities appear in baseTools with bounds recorded; genuinely-denied ones stay absent" | `test/roleTable.test.ts` |
 
 ## Out of scope (do not expand)
 
-No full 8-role roster (S2), no G-5 engine (S4), no HMAC/attestation (S5), no
-broker (S6). No Open-Q1 (sandbox vs Gondolin), Open-Q2 (fail-closed-vs-sink
+No G-5 engine (S4), no HMAC/attestation (S5), no broker reachability (S6, the
+git-broker name is inert/declared-only here), no S7 preflight/argument-level
+enforcement. The Tier-3 `stage-role-map.md`/`AGENTS.md` supersession is a
+SEPARATE operator-authored follow-up (plan D-D), NOT done here. No Open-Q1
+(in-process vs process-isolated delegation), Open-Q2 (fail-closed-vs-sink
 *policy*), Open-Q3 (MCP-broker reachability), or Open-Q4 (cutover sequencing)
-decisions are made here — this slice only demonstrates mechanisms.
+decisions are made here.

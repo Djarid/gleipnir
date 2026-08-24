@@ -45,6 +45,28 @@ export function setActiveRole(role: string): void {
   roleStack.push(role);
 }
 
+/**
+ * Seed the top-level session's role IFF the stack is empty (P4, AC-15).
+ *
+ * The `orchestrator` is the primary session, so at top-level `session_start`
+ * the stack must be seeded or every top-level tool call denies (deny-by-default
+ * — correct fail-safe, but the orchestrator could not even call `delegate`).
+ *
+ * The empty-stack GUARD is load-bearing: a child `createAgentSession` may fire
+ * its own `session_start`, which must NOT re-seed `orchestrator` over the role
+ * a `delegate` call already pushed for that child. Seeding only when the stack
+ * is empty makes the top-level seed additive and child-safe: top-level = a
+ * push onto empty; a child's pushed role (stack already non-empty) is left
+ * untouched. Returns `true` if it seeded, `false` if it declined (non-empty).
+ */
+export function seedActiveRoleIfEmpty(role: string): boolean {
+  if (roleStack.length > 0) {
+    return false;
+  }
+  roleStack.push(role);
+  return true;
+}
+
 /** Clear all state — deny-by-default until a role is (re-)set. Test-only reset too. */
 export function clearActiveRole(): void {
   roleStack.length = 0;

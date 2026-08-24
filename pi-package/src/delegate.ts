@@ -85,15 +85,39 @@ import { popActiveRole, pushActiveRole } from "./activeRole.ts";
 import { DepthCapExceededError, withDepthGuard } from "./depth.ts";
 import enforcementExtension from "./enforcement.ts";
 
-/** Resolve a role's allow-set to the plain tool-name array a child session's
- * `tools` option expects (DRY: the allow-set is defined ONCE in roleTable.ts;
- * this is the only place it is projected into pi's `tools` shape). */
+/** The custom-tool name this package actually DEFINES and can pass into a
+ * child session as a real tool definition. Referenced from one constant so
+ * the pass-through and its tests do not hand-duplicate the literal (DRY). */
+export const DELEGATE_TOOL_NAME = "delegate";
+
+/** Resolve a role's allow-set to the plain base+custom tool-name array a child
+ * session's `tools` option expects (DRY: the allow-set is defined ONCE in
+ * roleTable.ts; this is the only place it is projected into pi's `tools`
+ * shape). The git-broker partition is intentionally NOT projected into
+ * `tools` — the broker reach mechanism is separate (S6); the table declares
+ * it, `tools` does not fabricate it. */
 export function resolveChildTools(role: RoleName): string[] {
   const allowSet = ROLE_ALLOW_SETS[role];
   if (!allowSet) {
     throw new Error(`delegate: unknown role "${role}" has no allow-set`);
   }
-  return [...allowSet];
+  return [...allowSet.baseTools, ...allowSet.customTools];
+}
+
+/** Project a role's DECLARED `customTools` from the table into the child
+ * session's `customTools` argument (DRY, plan P3 — mirrors `resolveChildTools`,
+ * sourced from the same table, never a hand-duplicated pass-through list).
+ *
+ * Returns the role's declared custom-tool NAMES. Deny-by-default is preserved
+ * by construction: a role whose table entry does not list `"delegate"` does
+ * not get it back — the projection copies only what the entry declares, it
+ * never widens (plan Design Intent (c)). */
+export function resolveChildCustomTools(role: RoleName): string[] {
+  const allowSet = ROLE_ALLOW_SETS[role];
+  if (!allowSet) {
+    throw new Error(`delegate: unknown role "${role}" has no allow-set`);
+  }
+  return [...allowSet.customTools];
 }
 
 export interface DelegateParams {
@@ -119,9 +143,26 @@ function textResult(text: string): AgentToolResult<void> {
   return { content: [{ type: "text", text }], details: undefined };
 }
 
-export default function delegate(pi: ExtensionAPI): void {
-  pi.registerTool({
-    name: "delegate",
+/** The `delegate` tool definition object (name/label/description/parameters/
+ * execute) as a single reusable value.
+ *
+ * Extracted from the `registerTool` call so the SAME definition can be BOTH
+ * (a) registered by the extension entrypoint on the parent, and (b) passed
+ * into a child session's `customTools` when the child's role declares
+ * `"delegate"` — the self-referential `delegate`-defines-and-passes-`delegate`
+ * recursion that makes nested delegation reachable end-to-end (plan D-A,
+ * AC-13). `customTools` on `createAgentSession` expects tool DEFINITIONS
+ * (`registerTool`-shaped objects), not bare name strings, so the pass-through
+ * projects this definition — not the string `"delegate"` — into the child
+ * (plan §pass-through wiring detail, Link item 1).
+ *
+ * SRP: this builder returns the definition; it neither registers it nor
+ * decides who receives it. `resolveChildCustomTools(role)` (roleTable
+ * projection) decides WHETHER a child gets it; the extension decides to
+ * register it on the parent. */
+export function buildDelegateTool() {
+  return {
+    name: DELEGATE_TOOL_NAME,
     label: "Delegate to a bounded child session",
     description:
       "Creates a role-bounded child agent session (depth-capped, enforcement-wired per D6) and runs a prompt in it.",
@@ -135,8 +176,18 @@ export default function delegate(pi: ExtensionAPI): void {
       _signal: AbortSignal,
       _onUpdate: (update: unknown) => void,
       _ctx: unknown,
-    ) {
+    ): Promise<AgentToolResult<void>> {
       const tools = resolveChildTools(params.role);
+      // DRY (P3): the child's custom tools are PROJECTED from the same role
+      // table, never hand-listed. Only the roles whose table entry declares
+      // "delegate" (orchestrator, gleipnir-code) get the real delegate
+      // definition back; every other role's projection excludes it, so a
+      // non-delegate child cannot re-delegate (deny-by-default through the
+      // pass-through, plan Design Intent (c) / AC-12).
+      const childCustomNames = resolveChildCustomTools(params.role);
+      const childCustomTools = childCustomNames.includes(DELEGATE_TOOL_NAME)
+        ? [buildDelegateTool()]
+        : [];
 
       try {
         return await withDepthGuard(async () => {
@@ -159,7 +210,11 @@ export default function delegate(pi: ExtensionAPI): void {
               resourceLoader,
               sessionManager: SessionManager.inMemory(),
               tools,
-              customTools: [],
+              // Projected from the table (not `[]`): a delegate-role child
+              // receives the real `delegate` definition and can therefore
+              // re-enter this execute (nested delegation), where the depth
+              // cap catches it (AC-13). A non-delegate child receives [].
+              customTools: childCustomTools,
             });
 
             try {
@@ -192,5 +247,9 @@ export default function delegate(pi: ExtensionAPI): void {
         throw err;
       }
     },
-  });
+  };
+}
+
+export default function delegate(pi: ExtensionAPI): void {
+  pi.registerTool(buildDelegateTool());
 }

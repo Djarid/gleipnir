@@ -30,7 +30,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { canUse } from "./roleTable.ts";
-import { getActiveRole } from "./activeRole.ts";
+import { getActiveRole, seedActiveRoleIfEmpty } from "./activeRole.ts";
+
+/** The primary session's role. The top-level session IS the orchestrator, so
+ * `session_start` seeds it (P4). Referenced from one constant so the seed
+ * wiring and its test do not hand-duplicate the literal. */
+export const PRIMARY_ROLE = "orchestrator";
 
 /**
  * D5: demonstrate the shipped `ctx.hasUI` fail-closed branch as a
@@ -41,6 +46,19 @@ import { getActiveRole } from "./activeRole.ts";
  * reason mentions "no UI").
  */
 export default function enforcement(pi: ExtensionAPI): void {
+  // P4: seed the top-level active role at session start. Guarded
+  // (seedActiveRoleIfEmpty) so a child createAgentSession's own session_start
+  // cannot re-seed `orchestrator` over a delegate-pushed child role (AC-15).
+  // Registered defensively: if the runtime does not emit `session_start` this
+  // is an inert registration; the seed's guard logic is unit-tested directly
+  // (AC-15) rather than depending on a live session_start under --network=none
+  // (plan Open Item 4 — the child-session session_start behaviour could not be
+  // exercised empirically in this sandbox).
+  pi.on("session_start", async () => {
+    seedActiveRoleIfEmpty(PRIMARY_ROLE);
+    return undefined;
+  });
+
   pi.on("tool_call", async (event, ctx) => {
     const role = getActiveRole();
 
