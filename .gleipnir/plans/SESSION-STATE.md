@@ -7,6 +7,38 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
+### ⭐ MAJOR SESSION — FUNDAMENTAL ARCHITECTURE DECISION CORRECTED + PI.DEV REPLATFORM BRAINSTORM→PLAN→SPEC-REVIEW→S1-IMPLEMENTATION COMPLETE
+
+**Operator corrected D-1 and D-4 (the foundational decision about what Gleipnir ships as):** The repo's D-1 in `substrate-design-pass.md` and the spec said "opencode for v0.1, pi.dev port later is a contract-conformance exercise." **THIS WAS WRONG.** Gleipnir was ALWAYS intended as a native plugin/package FOR pi.dev (earendil-works "Pi Coding Agent"), riding pi.dev's community-maintained core harness, as a genuine CAPABILITY REWRITE (roster + deterministic G-5 engine + guard stack + solicited-cognition layer), NOT a mechanical port. The opencode-hosted build is NOW understood as interim/incorrect substrate, being superseded. **Durable decision-record supersessions NOT YET APPLIED** (named, not done; a followup task): `substrate-design-pass.md` D-1, `runtime-and-deps.md` stdlib-only-core constraint, spec D-1 entries (3 locations in `gleipnir_specification_v0_3_12.md`), `AGENTS.md` opencode framing, `stage-role-map.md` Axis-1/2 literals, config-scan and CI/hook wiring files. These are Tier-3/`src/**` — next session should decide: apply now or defer to S9 cutover?
+
+**Full brainstorm → plan → spec-review cycle, Approach B converged (commits `55c897e` → `9b64f367`):**
+- **Brainstorm:** Approach B (native TypeScript re-expression, pi.dev-ONLY, full substrate rewrite, Python core retired at pi edge) converged over Approaches A (Python-over-RPC), C (dual-target, rejected), D (phased hybrid). ARTIFACTS: `.gleipnir/plans/pi-dev-replatform-brainstorm.md` (507 lines, CONVERGED) + `.gleipnir/plans/pi-dev-replatform-build-order.md` (172 lines, 9-step roadmap S1–S9).
+- **Crux findings:** (1) pi.dev has NO host permission-map primitive — Gleipnir's enforcement must BE the `tool_call` block hook, not borrow a host feature. (2) pi.dev has NO first-class subagent/delegation primitive — built via `createAgentSession` + a Gleipnir-authored depth cap.
+- **S1 plan spec-reviewed PASSED:** `.gleipnir/plans/pi-dev-replatform-first-slice.md` (263 lines, the S1 ATLAS plan, approved for implementation).
+
+**Prerequisite: new sandbox `[profile.pi]` — critical blocker for ANY pi TypeScript work (commits `7a028134` + Tier-3 apply):**
+- **Plan `pi-sandbox-profile.md` underwent 3 spec-review rounds** — round 1 caught CRITICAL defect (`npm install -g` invisible to Node ESM under sandbox ro `/work` mount); round 2 caught a Node CLI bug in the mandatory smoke-test command itself.
+- **Operator built this in build mode** (Tier-3 files + podman access; unreachable to roster agents): found ANOTHER defect the plan didn't anticipate (`npm install` cwd=/` hits npm's own "idealTree already exists" bug). Fixed by installing to `/opt/pi-deps` + symlinking `/node_modules`, empirically proved resolution works (`RESOLVE_OK`, `--network=none`, ro `/work`), built+digest-pinned the image (`sha256:e6bf277b...acb27d`), applied both Tier-3 diffs (`.gleipnir/sandbox/profiles.toml` `[profile.pi]` + `.gleipnir/agents/gleipnir-code.md` 4 grant lines), post-apply re-verified.
+- **`pi` sandbox profile is live and proven** (commit `7a028134`).
+
+**S1 implemented and committed (commit `1eaae267`) — `pi-package/**` (10 files):**
+- Core: `roleTable.ts`/`activeRole.ts` (CRUX-1 allow-set data), `enforcement.ts` (`tool_call` block hook), `depth.ts` (delegation depth cap), `delegate.ts` (CRUX-2, `createAgentSession`-based delegation).
+- Tests: `test/{enforcement,delegate}.test.ts` (12/12 green); `README.md` (S1 narrative + two named S2 limitations).
+- **D6 (load-bearing unknown — does child auto-inherit parent's enforcement hook) is SETTLED with real evidence:** NO auto-inherit path in pi's SDK; `delegate.ts`'s explicit `extensionFactories` wiring is the ONLY mechanism. Proven via genuine end-to-end test (`AC-9-E2E`) against a REAL `createAgentSession` child using the SDK's real (private, undocumented) `_extensionRunner.emitToolCall` tool-dispatch path, with both denied-tool-block assertion and allowed-tool positive control.
+- **Quality-gated:** SPEC-CONFORM-ADJACENT PASS (all 10 ACs covered), BLAST-RADIUS PASS (one round-trip fixed stale D6 header comment). Two NAMED non-blocking S2 limitations documented: (a) `customTools: []` means nested `delegate` re-invocation unreachable end-to-end; (b) `roleTable.ts` tool names don't match SDK's real base `ToolName`s (doesn't break any AC but needs deliberate rename).
+- **Build-verified:** `bin/gleipnir-sandbox {test,lint} --profile pi` both pass in-container; tsc clean.
+- **Result: S1 COMPLETE and proven. D6 SETTLED.** Step S1 of 9 closes the roadmap loop; remaining S2–S9 are now unblocked.
+
+**Two lesson candidates recorded (commit `bb8215c`):**
+- **L-C33** — mid-session Tier-3 grant edits not visible to fresh subagent delegations; appears to load once per top-level session; full restart required and fixes it.
+- **L-C34** — build-mode bash/edit is ONLY for acts no roster role reaches (Tier-3 config, podman/images) — NEVER for authoring pipeline code. Orchestrator crossed this line; operator caught and corrected immediately; redone correctly via delegation.
+
+**Commits this session:** `55c897e` (Containerfile.pi + tests) → `9b64f367` (plan artifacts) → `7a028134` (Containerfile.pi fix + sandbox apply) → `1eaae267` (S1 implementation, D6 settled) → `bb8215c` (L-C33/L-C34).
+
+**Open threads / next:** S2 (full 8-role table + Pi manifest); S3 (real orchestrator→subagent flow; BLOCKED on Open-Q1); S4–S9 per build-order. Durable decision-record supersessions pending (decide now vs. S9 cutover). **S1 PROVEN; next: S2 roadmap execution.**
+
+---
+
 **Sandbox cleanup backlog (MINOR items from sandbox-profile-selector session) — CLOSED** (commits `501ada2` + `b7b16e8`):
 - **Item 1: Stale module docstring in `src/gleipnir/sandbox/__main__.py`** — Now documents the `--profile` override for `test`/`lint` (default_profile fallback, fail-closed exit-3 behavior via `resolve_profile`) and explicitly states `image-build` does NOT accept `--profile`.
 - **Item 2: Missing ISP regression test** — Added `test_image_build_subparser_has_no_profile_flag` in `tests/test_sandbox_cli.py`, dual assertion (attribute-absence + SystemExit-on-flag), mirroring the existing `test_lint_subparser_has_no_image_flag` precedent.
