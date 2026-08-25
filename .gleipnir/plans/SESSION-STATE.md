@@ -7,6 +7,29 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
+### ⭐ S2 COMPLETE — FULL 8-ROLE CAPABILITY TABLE + PACKAGE MANIFEST (pi.dev replatform roadmap)
+
+**Full hardened 8-stage pipeline run for S2 (commits `c8c99a9` + `7c66669`):**
+- **Brainstorm:** Six material decisions converged via operator `question`: D-A nested-delegation-scope (operator DIVERGED from recommendation, chose "in-scope now" — nested delegation is built and proven end-to-end, AC-13/AC-14, real depth-cap proof under actual nested re-invocation, not counter-level only); D-B tool-vocabulary (full typed partition: `UNIVERSALLY_DENIED`, `GIT_BROKER_TOOL`, `PM_BROKER_TOOL`); D-C table-shape (single flat TS object `{baseTools,customTools,brokerTools,bounds}`); D-D supersession-timing (separate follow-up plan, not S2); D-E manifest-scope (minimal-but-complete); plus Micro-decision on broker placeholder (inert name now). ARTIFACT: `.gleipnir/plans/pi-dev-replatform-s2-brainstorm.md` (CONVERGED).
+- **Plan:** `gleipnir-plan` drafted `.gleipnir/plans/pi-dev-replatform-s2.md` (930 lines, ATLAS-structured). **Spec-review round 1:** caught 2 defects — D1 coarse-base-tool omission (5 roles lacked a base-tool entry), D2 stale-baseline framing (re-stated "nested is future" but brainstorm had converged "nested is now"). Both fixed in round 2 → PASS.
+- **Code:** Working tree contained substantial uncommitted S2-level implementation from operator-confirmed interrupted prior session. Fixed the 2 spec-review-named defects. Verified 28/28 tests green, lint clean.
+- **Quality round 1:** NO-GO — found one Important DRY violation (`UNIVERSALLY_DENIED` duplicated across 2 test files) + 2 Moderate doc-staleness items. `gleipnir-code` fixed all three items. **Quality round 2 (re-review):** GO. Independently re-verified 28/28 pass + clean lint via a fresh `gleipnir-code` delegation immediately pre-commit (quality-reviewer's own bash floor couldn't run the sandbox).
+- **Git:** Two commits: `c8c99a9` (code/pi-package), `7c66669` (plan artifacts). Pushed to origin/main.
+
+**Key artifacts:** `.gleipnir/plans/pi-dev-replatform-s2-brainstorm.md` (CONVERGED), `.gleipnir/plans/pi-dev-replatform-s2.md` (930 lines, spec-review PASS), `pi-package/src/roleTable.ts` (full 8-role typed `{baseTools,customTools,brokerTools,bounds}` partition; `UNIVERSALLY_DENIED`/`GIT_BROKER_TOOL`/`PM_BROKER_TOOL` exports), `pi-package/src/delegate.ts` (`resolveChildCustomTools` pass-through, self-referential `buildDelegateTool`), `pi-package/test/{roleTable,delegate,enforcement}.test.ts` (28 tests total, AC-1 through AC-21).
+
+**D-A divergence explicitly:** Nested delegation is now IN SCOPE (built and proven end-to-end this session, AC-13/AC-14 — real depth-cap proof under actual nested re-invocation, not just counter-level). This pulls part of S3's originally-scoped work forward. **Flag for future sessions:** S3's remaining scope is now narrower. Delegation model + depth cap ARE built; S3's residual work is what's left — mainly the in-process-vs-RPC isolation question (Open-Q1/Q3 interactions unresolved).
+
+**Two new lesson candidates recorded (verified in `.gleipnir/lessons/session-lessons-candidates.md`):**
+- **L-C35** — task-tool transient prefill-error, retry recovers. A delegated task's tool-grant validation runs against the tool definition at invocation time; if there's a transient prefill error (e.g., a stale in-flight tool definition), a retry after the system settles recovers cleanly. Verified in real delegation flow.
+- **L-C36** — disposable docs can be stale relative to real uncommitted working-tree state from an interrupted session. Check `git status` on target directories early in review cycles; pre-existing uncommitted work may be more current than the plan's narrative.
+
+**Durable decision-record supersessions EXPLICITLY DEFERRED (not yet applied, per D-D convergence):** stage-role-map.md Axis-1/2 literals, AGENTS.md opencode framing, plus other Tier-3 files named in the previous session block. These remain a follow-up decision for a future session — not built into S2.
+
+**S2 CLOSED. S3 (delegation model — now partially pre-built by S2's D-A work, scope narrowed) is next per build-order. S4–S9 unchanged per roadmap.**
+
+---
+
 ### ⭐ MAJOR SESSION — FUNDAMENTAL ARCHITECTURE DECISION CORRECTED + PI.DEV REPLATFORM BRAINSTORM→PLAN→SPEC-REVIEW→S1-IMPLEMENTATION COMPLETE
 
 **Operator corrected D-1 and D-4 (the foundational decision about what Gleipnir ships as):** The repo's D-1 in `substrate-design-pass.md` and the spec said "opencode for v0.1, pi.dev port later is a contract-conformance exercise." **THIS WAS WRONG.** Gleipnir was ALWAYS intended as a native plugin/package FOR pi.dev (earendil-works "Pi Coding Agent"), riding pi.dev's community-maintained core harness, as a genuine CAPABILITY REWRITE (roster + deterministic G-5 engine + guard stack + solicited-cognition layer), NOT a mechanical port. The opencode-hosted build is NOW understood as interim/incorrect substrate, being superseded. **Durable decision-record supersessions NOT YET APPLIED** (named, not done; a followup task): `substrate-design-pass.md` D-1, `runtime-and-deps.md` stdlib-only-core constraint, spec D-1 entries (3 locations in `gleipnir_specification_v0_3_12.md`), `AGENTS.md` opencode framing, `stage-role-map.md` Axis-1/2 literals, config-scan and CI/hook wiring files. These are Tier-3/`src/**` — next session should decide: apply now or defer to S9 cutover?

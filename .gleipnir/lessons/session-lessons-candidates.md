@@ -507,6 +507,26 @@ _Provenance: reviewed_by operator (via question, this session) · date 2026-08-2
 
 ---
 
+## L-C35 — `task` delegations can fail outright with "This model does not support assistant message prefill"; a bare retry of the identical delegation recovers cleanly
+
+**Observed (this session):** three separate `task` tool calls to subagents (a brainstorm-continuation resume, a fresh spec-review delegation, and a fresh code-stage delegation) failed with the error `This model does not support assistant message prefill. The conversation must end with a user message.` — not tied to `task_id` resume specifically (it hit both a resume and two fresh invocations). In all three cases, re-issuing the EXACT SAME delegation prompt immediately afterward succeeded fully, with no observed side effects from the failed attempt (git status showed no unexpected changes attributable to the failed call).
+
+**Proposed lesson:** treat this error class as transient and retry the identical delegation once before escalating or changing approach; do not assume a failed `task` call means the subagent's role/model is broken, and do not assume a failed call is guaranteed side-effect-free — verify against disk (per L-C4) after a retry succeeds, same as after any delegation, in case the failed attempt partially executed tool calls before erroring.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-25 · session unknown · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
+## L-C36 — Disposable docs (SESSION-STATE.md, a component's own README, a build-order roadmap) can describe a stale code-state claim while the actual working tree has already moved past it from an interrupted prior session; check `git status`/`git diff --stat` on the target directory before trusting a doc's "current state" claim
+
+**Observed (this session):** SESSION-STATE.md, `pi-package/README.md`, and `pi-dev-replatform-build-order.md` all described S1 as a one-role proof with `delegate.ts` passing `customTools: []` unconditionally — but the actual on-disk `pi-package/src/roleTable.ts`/`delegate.ts` already contained substantial uncommitted 8-role/pass-through machinery from an operator-confirmed interrupted prior session, discovered only because a spec-review subagent, asked to check plan-vs-actual-code coherence, found the code citing the current session's own plan-decision names. This was resolved cleanly by asking the operator directly rather than guessing, but the anomaly could have been caught earlier.
+
+**Proposed lesson:** before delegating a `code`/`test` stage (or a spec-review coherence check) on a roadmap step that touches a specific directory, have the orchestrator (or the first subagent touching that directory) run `git status`/`git diff --stat` on that directory as a cheap first check — disposable Tier-0 pointer docs and even a component's own README can be silently stale relative to real uncommitted working-tree state, especially across interrupted sessions, and this is cheap to catch early rather than discovering it mid-pipeline via a reviewer's incidental coherence check.
+
+_Provenance: reviewed_by operator (via question, this session) · date 2026-08-25 · session unknown · interim gate — substitutes for the not-yet-built G-4c review-gated pipeline; this is a CANDIDATE, not a graduated lesson._
+
+---
+
 ## Note on placement
 
 `lessons/` is Tier-2 USER_REVIEWED. Per G-6 the proper path for entries is the
