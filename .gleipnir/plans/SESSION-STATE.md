@@ -7,6 +7,24 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
+### ⭐ S4 COMPLETE — G-5 DETERMINISTIC ENGINE RE-EXPRESSED IN TYPESCRIPT (full engine port; 136/136 green)
+
+**S4 was genuine code-level work** (unlike S3's convergence-only): a structural 1:1 port (Approach C) of the Python G-5 engine oracle into in-process TypeScript. Built: `pi-package/src/engine/{state,transitions,attestation,engine,allowTable,judges,router}.ts` (7 files) + `pi-package/test/{engine,allowTable,judges,router}.test.ts` (4 test files, ~108 new tests). Full suite now **136/136 green** (28 S1-S3 + 108 S4), lint clean.
+
+**Full hardened 8-stage pipeline:** brainstorm (`pi-dev-replatform-s4-brainstorm.md`, 6 decisions D-S4-1..6 all converged via operator `question` MATCHING recommendations, no divergence) → plan (`pi-dev-replatform-s4.md`, 655 lines, exceptionally well-sourced line-for-line against the Python oracle) → spec-review PASS (2 binding pre-code amendments: real brand-checked Attestation class; test-only state accessor for the cycle-thrash test not resumeAt) → code → quality (NO-GO on 1 Important honour-check finding, then GO after operator-acknowledged resolution) → git.
+
+**The 6 converged decisions (brief):** D-S4-1 = Approach C (structural 1:1 + TS-idiomatic surface, mandatory idiom-mapping table); D-S4-2 = in-process singleton (restart-survival deferred to S5 seam); D-S4-3 = judge shapes/grammars now, live wiring deferred; D-S4-4 = attestation VALUE types + attempt_gate contract only, no HMAC/fetch (S5); D-S4-5 = router MECHANISM re-expressed now, opencode→pi literal supersession stays deferred Tier-3; D-S4-6 = zero edits to the 5 S1-S3 modules + additive allowedRolesFor seam.
+
+**Unusual build provenance (worth noting for the record):** the code-stage delegation failed 4x with a "prefill"/"aborted" error at the final-message step but had ALREADY executed its file writes each time — so the full engine (both planned "parts") landed on disk from those interrupted attempts. Confirmed via investigation, validated L-C35's own caveat (verify disk after a failed task attempt). A one-line `router.ts` JSDoc comment bug (`**/` inside a comment self-closing it, breaking whole-package lint) was found and fixed. The orchestrator (build mode) amended `.gleipnir/sandbox/profiles.toml`'s [profile.pi] test-argv to run the 4 new test files (they existed but weren't wired into the sandbox test list; also folded in the previously-unrun roleTable.test.ts).
+
+**Operator-acknowledged honour-check finding (recorded durably):** the quality stage caught that the TS const-object-enum idiom (D-S4-1) makes `PipelineState` values plain runtime strings, so `resumeAt(id, "spec_review")` with a raw string SUCCEEDS where the Python oracle's `resume_at` (isinstance-based) RAISES — a fail-closed weakening at the (future S5) rehydration seam entry. Operator ACKNOWLEDGED it as an accepted consequence of the converged idiom. Recorded in TWO places: idiom-table row 15 in `pi-dev-replatform-s4.md` (Tier-0), and an "S4 addendum" section in `.gleipnir/decisions/pi-replatform-open-q1.md` (Tier-3, build-mode authored) naming a **runtime brand/tag hardening item deferred to S5** (reject raw-string state at the persistence-seam entry when S5 wires persistence).
+
+**Commits:** `2fa3296` (engine code + tests, pi-package/) and `e93e04f` (Tier-3 config + records: profiles.toml test-argv, Open-Q1 S4 addendum, both plan artifacts). Both pushed to origin/main. Working tree now fully clean (the long-standing unrelated profiles.toml modification is resolved — it was the roleTable.test.ts test-list gap, now folded into the S4 test-argv edit).
+
+**Update "Open threads / next":** S4 CLOSED. Next per build-order is **S5 — G-3.1 attestation (HMAC marker) in TypeScript** (oracle = `src/gleipnir/verify/marker.py` + golden fixtures; depends on S4's now-built engine emitting attested transitions; and S5 is where the two named hardening seams land: the resumeAt raw-string brand-check AND signed restart/compaction persistence). Also still-DEFERRED per S2's D-D: the Tier-3 opencode→pi literal supersession of stage-role-map.md Axis-1/2 + AGENTS.md framing (S4's router.ts re-expressed the MECHANISM but deliberately did not touch the literals).
+
+---
+
 ### ⭐ S3 CLOSED — DELEGATION MODEL EXIT CRITERION FORMALLY CLOSED + OPEN-Q1 RATIFIED (convergence-only, no new code)
 
 **S3 was convergence-only:** The honest finding was that S2's operator-converged D-A ("nested delegation in-scope now") had ALREADY built and proven S3's entire delegation edge, depth cap, and role-capability containment (AC-5 through AC-21, 28/28 green). S3 shipped NO new code — it formally closed the build-order S3 exit criterion clause-by-clause against existing S2 evidence.
