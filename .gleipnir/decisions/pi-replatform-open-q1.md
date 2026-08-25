@@ -76,10 +76,57 @@ This record resolves **Open-Q1 only.** It does not touch Open-Q2 (human-gate
 policy under `-p`/`--mode rpc`/`--mode json`), Open-Q3 (MCP-broker reachability,
 → S6), or Open-Q4 (cutover/retirement sequencing, → S9).
 
+## S4 addendum — accepted engine-idiom deviation + named S5 hardening item
+
+**Added when:** S4 (G-5 deterministic engine, TS re-expression) closed. Authored
+by the operator via the escape hatch (Tier-3, build mode). Recorded here because
+the S4 plan's idiom-mapping table (`../plans/pi-dev-replatform-s4.md`
+§Design Principles, row 15) points to this record as the authoritative home of
+the durable acknowledgment; and because the hardening item this names is
+S5-conditional, alongside this record's existing S6-conditional RPC item.
+
+**The deviation (operator-acknowledged, accepted):** the S4 TS engine re-expresses
+the Python oracle's `PipelineState` (a `str, Enum`) as a **const-object +
+string-literal union** (converged decision D-S4-1 / D-S4-P2 — the idiom that
+preserves the string *values* the bridge/router seam depends on). A consequence:
+the Python oracle's `Engine.resume_at(id, state)` type-rejects even a
+**same-valued plain string** via `isinstance(state, PipelineState)` (a str-Enum
+member is a distinct runtime type from a bare `str`, so `resume_at(id,
+"spec_review")` RAISES), whereas the TS `resumeAt`'s `isPipelineState` guard
+(`pi-package/src/engine/state.ts`) can only reject values that are **not one of
+the ten legitimate state strings at all** — it **cannot distinguish a raw string
+from an "enum member,"** so TS `resumeAt(id, "spec_review")` **SUCCEEDS** where
+Python RAISES.
+
+**Why accepted, not fixed now:** this is a genuine fail-closed *weakening* at the
+(future S5) rehydration seam's entry point, but it is a direct, unavoidable
+consequence of the converged const-object-enum idiom (there is no runtime brand
+on a plain-string enum value to check). It was honestly disclosed in the S4 code
+comments (`state.ts`) and adapted-in-test (`engine.test.ts`), caught at the S4
+quality-stage honour-check, surfaced to the operator, and accepted as a known
+consequence rather than reopening the D-S4-1 idiom decision. The `resumeAt` seam
+is not yet fed any untrusted input in S4 (the engine holds its state as an
+in-process singleton per D-S4-2; `resumeAt` is a not-yet-wired rehydration
+shape).
+
+**Named S5 hardening item (S5-conditional, TRACKED FUTURE WORK):** when S5 wires
+signed restart/compaction persistence into the `resumeAt` rehydration seam, add a
+**runtime brand/tag on `PipelineState` (or a branded `resumeAt` state parameter)
+so a same-valued raw string is rejected at the seam entry**, restoring the Python
+oracle's `isinstance`-strength rejection for any state value that crosses the
+persistence boundary (where the input provenance is no longer a trusted
+in-process literal). The trigger is S5's persistence-seam wiring; until then, the
+leniency is accepted. This composes with — does not supersede — the existing
+S6-conditional RPC item above.
+
 ## Linkage
 
 - **Derived from:** `../plans/pi-dev-replatform-s3.md` (S3 closure record) and
-  `../plans/pi-dev-replatform-s3-brainstorm.md` §D-S3-A (converged brief).
+  `../plans/pi-dev-replatform-s3-brainstorm.md` §D-S3-A (converged brief). The S4
+  addendum is derived from `../plans/pi-dev-replatform-s4.md` (§Design Principles
+  row 15) and the S4 quality-stage honour-check finding.
 - **Consulted by:** S4 (the G-5 engine sequences over a *stable* in-process
-  delegation edge — this record is the stability guarantee) and S6 (the
-  RPC-variant trigger — this record names the S6-conditional future work).
+  delegation edge — this record is the stability guarantee; S4 also records its
+  accepted idiom-deviation + S5 hardening item here) and S6 (the RPC-variant
+  trigger — this record names the S6-conditional future work). **S5** consults the
+  named hardening item above when wiring the persistence/rehydration seam.

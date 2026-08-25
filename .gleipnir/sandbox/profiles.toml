@@ -79,7 +79,7 @@ test_selector_prefix = false
 # Peer-dep resolvability empirically verified (RESOLVE_OK, --network=none, ro /work).
 [profile.pi]
 image = "localhost/gleipnir-sandbox-pi@sha256:e6bf277baf3a2511e6af0bfc431e99a4aebd50d0921343709e471a3519acb27d"
-test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts"]
+test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts", "pi-package/test/roleTable.test.ts", "pi-package/test/engine.test.ts", "pi-package/test/allowTable.test.ts", "pi-package/test/judges.test.ts", "pi-package/test/router.test.ts"]
 lint = ["npx", "tsc", "--noEmit", "-p", "pi-package/tsconfig.json"]
 coverage = { unavailable = true, justified = "node:test built-in TS coverage deferred; S1 primitive-proof slice, no coverage tool wired (mirrors node profile)" }
 test_selector_prefix = false
