@@ -7,6 +7,28 @@ supersedes the old `session-seams-ledger.md` (now a tombstone)._
 
 ## Current state
 
+### ⭐ S3 CLOSED — DELEGATION MODEL EXIT CRITERION FORMALLY CLOSED + OPEN-Q1 RATIFIED (convergence-only, no new code)
+
+**S3 was convergence-only:** The honest finding was that S2's operator-converged D-A ("nested delegation in-scope now") had ALREADY built and proven S3's entire delegation edge, depth cap, and role-capability containment (AC-5 through AC-21, 28/28 green). S3 shipped NO new code — it formally closed the build-order S3 exit criterion clause-by-clause against existing S2 evidence.
+
+**Pipeline (light path, prose/config-only track):**
+- **Brainstorm:** `pi-dev-replatform-s3-brainstorm.md`, 2 decisions — D-S3-A Open-Q1 isolation, D-S3-B net-new-vs-convergence-only — both converged via operator `question` MATCHING the recommendations, NO divergence.
+- **Plan:** `pi-dev-replatform-s3.md`, 531-line closure record.
+- **Spec-review:** PASS (single collapsed light-path pass; all AC citations verified against pi-package/README.md, ratification-text fidelity confirmed, residual honesty confirmed, Design Intent falsifiable).
+- **Test/code/git/gate:** Carried the attested "N/A — no executable artifact" transition.
+
+**Open-Q1 RATIFIED = in-process `createAgentSession` is final for S3.** RPC (`runRpcMode`) variant tracked as S6-conditional future work only (additive per delegate.ts's SRP boundary + activeRole.ts's per-process stack model). Recorded durably in the NEW Tier-3 decision record `.gleipnir/decisions/pi-replatform-open-q1.md` (authored by operator/build-mode this session — no roster subagent can write Tier-3).
+
+**Two carried residuals recorded as NON-DEFECTS** (not S3 gaps):
+- (a) live-model-turn gap (`--network=none` sandbox/auth limit, unclosable by delegation code);
+- (b) arg-level `event.input` enforcement (E-1 seam, deferred to S7, `bounds` metadata already in place per S2).
+
+**Commits this closure:** `2a918b8` (S3 artifacts: decisions/pi-replatform-open-q1.md + both plan files) and `2811b6c` (dangling bookkeeping: L-C35/L-C36 lesson candidates + prior S2 SESSION-STATE update). Both pushed to origin/main.
+
+**S3 CLOSED.** Next per build-order is **S4 — G-5 deterministic engine, re-expressed in TypeScript** (oracle = existing src/gleipnir/engine/{driver,judges,allow_table,bridge}.py + DESIGN.md + their tests; runs in-process; the in-process delegation edge S3 just ratified is S4's stable-edge dependency). Also still-DEFERRED per S2's D-D convergence: the Tier-3 supersession of stage-role-map.md Axis-1/2 literals + AGENTS.md opencode framing (not yet applied; a follow-up decision for a future session). Note the pre-existing unrelated unstaged file `.gleipnir/sandbox/profiles.toml` still sits in the working tree (carried across sessions, not part of any current thread).
+
+---
+
 ### ⭐ S2 COMPLETE — FULL 8-ROLE CAPABILITY TABLE + PACKAGE MANIFEST (pi.dev replatform roadmap)
 
 **Full hardened 8-stage pipeline run for S2 (commits `c8c99a9` + `7c66669`):**
