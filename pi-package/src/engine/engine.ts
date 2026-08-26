@@ -16,7 +16,12 @@
  * mirrors `DESIGN.md`'s non-goals + oracle module docstring).
  */
 
-import { PipelineState, isPipelineState, DEFAULT_REVERT_BUDGET } from "./state.ts";
+import {
+  PipelineState,
+  isPipelineState,
+  DEFAULT_REVERT_BUDGET,
+  BrandedPipelineState,
+} from "./state.ts";
 import { Verdict, TRANSITIONS, isVerdict, type Judge } from "./transitions.ts";
 import { Attestation, AttestationStatus } from "./attestation.ts";
 
@@ -125,13 +130,28 @@ export class Engine {
    * must be a real `PipelineState` member; anything else is rejected
    * (fail-closed), never coerced. The revert counter resets to 0 on resume
    * (the honestly-flagged gap, oracle L330-335).
+   *
+   * S5 ADDITIVE HARDENING (D-S5-3/D-S5-P1, AC-BRAND-1..3): `state` must now
+   * be a `BrandedPipelineState` (via `state.ts`'s `brandState()`), not a
+   * bare `PipelineState` string. This closes the S4-deferred limitation
+   * (`state.ts`'s `isPipelineState` header / S4 idiom-table row 15): a raw
+   * string — even one with the exact same VALUE as a genuine member — is
+   * REJECTED here, mirroring Python's `isinstance(state, PipelineState)`.
+   * `step`/`answerHumanQuestion`/`attemptGate` are UNCHANGED (AC-ADDITIVE);
+   * this is the ONLY tightening in this file.
    */
-  static resumeAt(pipelineId: string, state: PipelineState, revertBudget?: number): Engine {
-    if (!isPipelineState(state)) {
-      throw new InvalidVerdict(`resumeAt requires a PipelineState, got ${JSON.stringify(state)}`);
+  static resumeAt(
+    pipelineId: string,
+    state: BrandedPipelineState,
+    revertBudget?: number,
+  ): Engine {
+    if (!(state instanceof BrandedPipelineState)) {
+      throw new InvalidVerdict(
+        `resumeAt requires a branded PipelineState (via brandState()), got ${typeof state}`,
+      );
     }
     const engine = new Engine(pipelineId, revertBudget);
-    engine._state = state;
+    engine._state = state.value;
     return engine;
   }
 
@@ -281,3 +301,7 @@ export class Engine {
 // Re-exported so callers/tests can reference the data modules through this
 // single module path if convenient, without engine.ts re-defining them.
 export { PipelineState, Verdict, TRANSITIONS, isPipelineState, isVerdict, Attestation };
+// S5 addition: BrandedPipelineState, re-exported for the same convenience
+// reason (callers needing resumeAt's new required type need not import
+// state.ts separately).
+export { BrandedPipelineState };

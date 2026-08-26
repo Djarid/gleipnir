@@ -85,3 +85,38 @@ const PIPELINE_STATE_VALUES: ReadonlySet<string> = Object.freeze(
 export function isPipelineState(value: unknown): value is PipelineState {
   return typeof value === "string" && PIPELINE_STATE_VALUES.has(value);
 }
+
+/**
+ * S5 ADDITIVE (D-S5-3 / D-S5-P1): the runtime brand `Engine.resumeAt` now
+ * requires, closing exactly the same-valued-raw-string limitation
+ * documented above. Mirrors the `Attestation` `instanceof`-brand idiom
+ * (`engine/attestation.ts`) rather than inventing a new mechanism —
+ * idiom-table row 8's "boxed/tagged object" option. A bare string, even
+ * one that equals a genuine `PipelineState` value, is NOT an instance of
+ * this class and is therefore rejected at `resumeAt`'s entry; only a value
+ * produced by `brandState()` (which itself re-validates via
+ * `isPipelineState`, so a `BrandedPipelineState` can never wrap a bogus
+ * value) is accepted. This does not widen `PipelineState`'s vocabulary,
+ * order, or budget — it is a construction-time guard on ONE consumer
+ * (`Engine.resumeAt`), nothing else.
+ */
+export class BrandedPipelineState {
+  readonly value: PipelineState;
+
+  constructor(value: PipelineState) {
+    if (!isPipelineState(value)) {
+      throw new TypeError(
+        `brandState requires a genuine PipelineState, got ${JSON.stringify(value)}`,
+      );
+    }
+    this.value = value;
+    Object.freeze(this);
+  }
+}
+
+/** Brand a genuine `PipelineState` value for `Engine.resumeAt` (D-S5-3).
+ * The ONLY way to obtain a value `resumeAt` accepts; a raw string is
+ * rejected even when it is a same-valued genuine member. */
+export function brandState(value: PipelineState): BrandedPipelineState {
+  return new BrandedPipelineState(value);
+}

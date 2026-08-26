@@ -32,6 +32,8 @@ import {
   PipelineState,
   PIPELINE_ORDER,
   DEFAULT_REVERT_BUDGET,
+  brandState,
+  BrandedPipelineState,
 } from "../src/engine/state.ts";
 import { Verdict, TRANSITIONS, type Judge } from "../src/engine/transitions.ts";
 import { Attestation, AttestationStatus } from "../src/engine/attestation.ts";
@@ -687,7 +689,12 @@ test("test_refused_attempt_leaves_git_state_untouched_for_retry", () => {
 // ---------------------------------------------------------------------------
 
 test("test_resume_at_reconstructs_at_given_state", () => {
-  const engine = Engine.resumeAt(PIPELINE_ID, PipelineState.SPEC_REVIEW);
+  // S5 UPDATE (D-S5-3/D-S5-P1): `resumeAt` now requires a `BrandedPipelineState`
+  // (see `state.ts`'s `brandState()` / `engine.ts`'s `resumeAt` header) — a raw
+  // `PipelineState` string is no longer accepted, even a genuine member. This
+  // is the ONLY change this S5 hardening makes to this test: brand the value
+  // before passing it, the call itself and its assertions are unchanged.
+  const engine = Engine.resumeAt(PIPELINE_ID, brandState(PipelineState.SPEC_REVIEW));
   assert.equal(engine.state, PipelineState.SPEC_REVIEW);
   // and it is a live engine: a PASS advances per the table
   const result = engine.step(makePassJudge());
@@ -696,17 +703,24 @@ test("test_resume_at_reconstructs_at_given_state", () => {
 
 test("test_resume_at_rejects_non_pipelinestate", () => {
   // ADAPTED (reported divergence — see state.ts's `isPipelineState` header
-  // and the S4 final report). Python's `isinstance(state, PipelineState)`
-  // rejects even the PLAIN STRING "spec_review" (same VALUE as a real
-  // member, but not a genuine Enum instance) -- oracle
-  // `Engine.resume_at(PIPELINE_ID, "spec_review")`. The TS idiom chosen for
-  // `PipelineState` (D-S4-P2: const-object + string-literal union) has no
-  // runtime distinction between a "genuine" member string and a same-valued
-  // plain string -- both ARE just the string `"spec_review"` at runtime. So
-  // this port asserts the SAME refusal behaviour (fail-closed on a
-  // non-member value) using a value that is NOT a legitimate PipelineState
-  // string under ANY representation, which is the strongest case the chosen
-  // TS surface can genuinely support.
-  assert.throws(() => Engine.resumeAt(PIPELINE_ID, "not-a-real-state" as PipelineState), InvalidVerdict);
-  assert.throws(() => Engine.resumeAt(PIPELINE_ID, 42 as unknown as PipelineState), InvalidVerdict);
+  // and the S4 final report), now CLOSED by the S5 brand-check (D-S5-3):
+  // Python's `isinstance(state, PipelineState)` rejects even the PLAIN
+  // STRING "spec_review" (same VALUE as a real member, but not a genuine
+  // Enum instance) -- oracle `Engine.resume_at(PIPELINE_ID, "spec_review")`.
+  // S4's `isPipelineState` alone could not reproduce that (see the header),
+  // but `resumeAt`'s new `BrandedPipelineState` requirement now rejects ANY
+  // bare value — member or not — so this port's non-member case still holds
+  // (and the now-closed same-valued-member case is proven separately by
+  // `enginePersistence.test.ts`'s AC-BRAND-2, per the plan's idiom-table row
+  // 8). The `as unknown as BrandedPipelineState` casts below are necessary
+  // ONLY to get a deliberately-wrong runtime value past the compile-time
+  // type so the RUNTIME `instanceof` guard is what is actually exercised.
+  assert.throws(
+    () => Engine.resumeAt(PIPELINE_ID, "not-a-real-state" as unknown as BrandedPipelineState),
+    InvalidVerdict,
+  );
+  assert.throws(
+    () => Engine.resumeAt(PIPELINE_ID, 42 as unknown as BrandedPipelineState),
+    InvalidVerdict,
+  );
 });
