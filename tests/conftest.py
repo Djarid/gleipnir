@@ -31,6 +31,17 @@ if importlib.util.find_spec("mcp") is None:
     collect_ignore.append("test_broker_git_mcp_server.py")
     collect_ignore.append("test_broker_pm_mcp_server.py")
     collect_ignore.append("test_broker_run_manifest.py")
+    # S6 (`.gleipnir/plans/pi-dev-replatform-s6.md`, AC-WIRE-1): the
+    # pure-Python cross-profile wire-protocol confirmation also imports `mcp`
+    # transitively (it spawns the real `git/mcp_server.py`). Same guard,
+    # same reason.
+    collect_ignore.append("test_broker_wire_protocol.py")
+    # git-diff-distill (`.gleipnir/plans/git-diff-distill.md`, Decision 13 /
+    # Assemble Step 1): the `git_diff` content-handler integration test
+    # imports `mcp_server` transitively too. Deliberately NOT adding
+    # `test_broker_git_content_handlers.py` here -- that file is stdlib-only
+    # and is meant to run under the lean `python` profile as well.
+    collect_ignore.append("test_broker_git_diff_distill.py")
 
 
 def pytest_configure(config):

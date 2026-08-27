@@ -14,8 +14,9 @@
  * without touching `enforcement.ts`'s hook logic — the table is data-driven,
  * the hook is closed to modification as the roster grows. `canUse` treats
  * every role uniformly (LSP): union membership across the three partitions,
- * no per-role special case (the inert git-broker name is handled by the same
- * membership rule, not a `git-ops` branch).
+ * no per-role special case (the concrete git/pm broker tool names — S6,
+ * D-S6-1b — are handled by the same membership rule, not a role-specific
+ * branch).
  *
  * Source of truth: `.gleipnir/agents/*.md` frontmatter `permission:`/`tools:`
  * blocks (all 8 read at S2 authoring). Partition split (plan D-B, P2):
@@ -97,22 +98,40 @@ export interface RoleAllowSet {
 
 export type RoleName = string;
 
-/** The inert git-broker namespace name granted (in the table only) to the
- * sole holder. Referenced from this single constant so tests do not
- * hand-duplicate the literal (DRY, plan §DRY). "Inert" = the capability is
- * DECLARED in the table (so `canUse` returns `true` for git-ops), but no real
- * `gleipnir-git_*` tool is registered/reachable yet (that is S6). */
-export const GIT_BROKER_TOOL = "gleipnir-git_*";
+/** The 4 concrete git broker tool names, now REACHABLE via the S6 broker
+ * extension (`broker/gitBroker.ts`), registered here as literal DATA rows
+ * (D-S6-1b, operator-converged) — replacing the S2 inert `"gleipnir-git_*"`
+ * glob placeholder this constant used to hold. `canUse`'s exact-match
+ * `.includes()` (UNCHANGED below) resolves each of these four names `true`
+ * for `git-ops` and `false` for every other role, by the SAME membership
+ * rule as before (G-2 sole-holder) — this is a pure data-diff, not a
+ * matching-logic change. Referenced from this single constant (DRY) so the
+ * table, `broker/gitBroker.ts`'s tool registration, and both S6 test files
+ * never hand-duplicate the literals. */
+export const GIT_BROKER_TOOLS: readonly string[] = [
+  "gleipnir-git_git_status",
+  "gleipnir-git_git_diff",
+  "gleipnir-git_commit_changes",
+  "gleipnir-git_push_current_branch",
+];
 
-/** The pm broker namespace, modelled in `project-mgr.customTools` per P2 (see
- * header) so `brokerTools` stays git-only for the G-2 proof. */
-export const PM_BROKER_TOOL = "gleipnir-pm_*";
+/** The 4 concrete pm broker tool names, modelled in
+ * `project-mgr.customTools` per P2 (see header) so `brokerTools` stays
+ * git-only for the G-2 proof — now REACHABLE via `broker/pmBroker.ts`,
+ * registered here as literal DATA rows (D-S6-1b) replacing the S2 inert
+ * `"gleipnir-pm_*"` glob placeholder. */
+export const PM_BROKER_TOOLS: readonly string[] = [
+  "gleipnir-pm_issue_create",
+  "gleipnir-pm_issue_update",
+  "gleipnir-pm_issue_comment",
+  "gleipnir-pm_issue_close",
+];
 
 /** A tool name no role should ever hold, in any partition — the shared
  * universal-deny probe used by both `roleTable.test.ts` and
  * `enforcement.test.ts`. Exported from this single constant so both test
  * files import rather than hand-duplicate the literal (DRY, same pattern as
- * `GIT_BROKER_TOOL`/`PM_BROKER_TOOL` above). */
+ * `GIT_BROKER_TOOLS`/`PM_BROKER_TOOLS` above). */
 export const UNIVERSALLY_DENIED = "totally_unregistered_tool_xyz";
 
 /**
@@ -177,12 +196,12 @@ const ROLE_ALLOW_SETS_RAW: Record<RoleName, RoleAllowSet> = {
     ],
   },
   // The sole git/broker holder (G-2). read (not .git/**); branch/sync bash
-  // allowlist; the inert git-broker namespace is the ONLY non-empty
-  // brokerTools in the whole table.
+  // allowlist; the git broker's 4 concrete tool names (S6, D-S6-1b) are the
+  // ONLY non-empty brokerTools in the whole table.
   "git-ops": {
     baseTools: ["read", "bash"],
     customTools: [],
-    brokerTools: [GIT_BROKER_TOOL],
+    brokerTools: GIT_BROKER_TOOLS,
     bounds: [
       "read denied under .git/** to protect the token (path bound; arg-level, S3/S7)",
       "bash allowlisted to branch/sync verbs (status/diff/log/checkout/switch/branch/merge/fetch/pull); commit+push move to the broker (arg bound; arg-level, S3/S7)",
@@ -192,7 +211,7 @@ const ROLE_ALLOW_SETS_RAW: Record<RoleName, RoleAllowSet> = {
   // (P2) so brokerTools stays git-only for the G-2 proof.
   "project-mgr": {
     baseTools: ["read"],
-    customTools: [PM_BROKER_TOOL],
+    customTools: PM_BROKER_TOOLS,
     brokerTools: [],
     bounds: ["single-namespace: only the pm surface; git namespace denied"],
   },
@@ -242,8 +261,11 @@ export function unionAllowSet(role: RoleName): ReadonlySet<string> {
  * unknown to the table -> false; `toolName` absent from the role's union
  * allow-set (base ∪ custom ∪ broker) -> false. Only an explicit table hit in
  * one of the three partitions returns `true`. Uniform across all roles (LSP):
- * the inert git-broker name resolves `true` for git-ops and `false` for every
- * other role by the SAME membership rule, not a special case.
+ * each concrete git/pm broker tool name (S6, D-S6-1b) resolves `true` for
+ * its sole-holder role and `false` for every other role by the SAME
+ * membership rule, not a special case. The function body below is
+ * BYTE-IDENTICAL to its pre-S6 form — S6 only changed the DATA the table
+ * carries, never this matching logic.
  */
 export function canUse(role: RoleName | undefined, toolName: string): boolean {
   if (!role) {
