@@ -13,8 +13,8 @@ import { test } from "node:test";
 
 import {
   canUse,
-  GIT_BROKER_TOOL,
-  PM_BROKER_TOOL,
+  GIT_BROKER_TOOLS,
+  PM_BROKER_TOOLS,
   ROLE_ALLOW_SETS,
   SDK_BASE_TOOL_NAMES,
   UNIVERSALLY_DENIED,
@@ -90,40 +90,67 @@ test("AC-17: git-ops is the sole broker (git) holder; every other role's brokerT
   );
   assert.deepEqual(
     [...ROLE_ALLOW_SETS["git-ops"].brokerTools],
-    [GIT_BROKER_TOOL],
-    "git-ops.brokerTools must carry exactly the inert git-broker name",
+    [...GIT_BROKER_TOOLS],
+    "git-ops.brokerTools must carry exactly the 4 concrete git broker tool names (S6, D-S6-1b)",
   );
 });
 
-test("AC-17: the inert git-broker name is granted to git-ops and denied to every other role (G-2)", () => {
+test("AC-17/AC-G2 (S6): each of the 4 concrete git broker tool names is granted to git-ops and denied to every other role (G-2)", () => {
   assert.equal(
-    canUse("git-ops", GIT_BROKER_TOOL),
-    true,
-    "git-ops must be able to use the git-broker name (capability declared in the table)",
+    GIT_BROKER_TOOLS.length,
+    4,
+    "S6 registers exactly 4 concrete git broker tool names",
   );
-  for (const role of ALL_ROLES) {
-    if (role === "git-ops") continue;
+  for (const gitTool of GIT_BROKER_TOOLS) {
     assert.equal(
-      canUse(role, GIT_BROKER_TOOL),
-      false,
-      `${role} must NOT be able to use the git-broker name (G-2 sole-holder)`,
+      canUse("git-ops", gitTool),
+      true,
+      `git-ops must be able to use the concrete git broker tool "${gitTool}"`,
     );
+    for (const role of ALL_ROLES) {
+      if (role === "git-ops") continue;
+      assert.equal(
+        canUse(role, gitTool),
+        false,
+        `${role} must NOT be able to use the concrete git broker tool "${gitTool}" (G-2 sole-holder)`,
+      );
+    }
   }
 });
 
-test("AC-17 (P2): the pm namespace lives in project-mgr.customTools, uniquely, and NOT in any brokerTools", () => {
-  // project-mgr uniquely holds pm.
-  assert.equal(canUse("project-mgr", PM_BROKER_TOOL), true, "project-mgr holds pm");
-  for (const role of ALL_ROLES) {
-    if (role === "project-mgr") continue;
-    assert.equal(canUse(role, PM_BROKER_TOOL), false, `${role} must not hold pm`);
+test("AC-17 (P2) / AC-G2 (S6): the 4 concrete pm tool names live in project-mgr.customTools, uniquely, and NOT in any brokerTools", () => {
+  assert.equal(
+    PM_BROKER_TOOLS.length,
+    4,
+    "S6 registers exactly 4 concrete pm broker tool names",
+  );
+  for (const pmTool of PM_BROKER_TOOLS) {
+    // project-mgr uniquely holds each concrete pm tool name.
+    assert.equal(canUse("project-mgr", pmTool), true, `project-mgr holds "${pmTool}"`);
+    for (const role of ALL_ROLES) {
+      if (role === "project-mgr") continue;
+      assert.equal(canUse(role, pmTool), false, `${role} must not hold "${pmTool}"`);
+    }
+    // pm must NOT dilute brokerTools (which is the git-only G-2 partition).
+    for (const role of ALL_ROLES) {
+      assert.ok(
+        !ROLE_ALLOW_SETS[role].brokerTools.includes(pmTool),
+        `${role}.brokerTools must not contain the pm tool "${pmTool}" (P2: git-only)`,
+      );
+    }
   }
-  // pm must NOT dilute brokerTools (which is the git-only G-2 partition).
-  for (const role of ALL_ROLES) {
-    assert.ok(
-      !ROLE_ALLOW_SETS[role].brokerTools.includes(PM_BROKER_TOOL),
-      `${role}.brokerTools must not contain the pm namespace (P2: git-only)`,
-    );
+});
+
+test("AC-G2-3 (S6): canUse's function body is unaffected by the DATA-only edit — a role's union set still fails closed on any name outside its declared partitions", () => {
+  // Cross-namespace denial: git-ops (the git sole-holder) must NOT be able
+  // to use ANY pm tool name, and project-mgr (the pm sole-holder) must NOT
+  // be able to use ANY git tool name — the two namespaces stay disjoint
+  // under the SAME unchanged canUse matching logic.
+  for (const pmTool of PM_BROKER_TOOLS) {
+    assert.equal(canUse("git-ops", pmTool), false, `git-ops must not hold "${pmTool}"`);
+  }
+  for (const gitTool of GIT_BROKER_TOOLS) {
+    assert.equal(canUse("project-mgr", gitTool), false, `project-mgr must not hold "${gitTool}"`);
   }
 });
 

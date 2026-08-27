@@ -11,7 +11,9 @@
     "extensions": [
       "./src/enforcement.ts",
       "./src/delegate.ts",
-      "./src/enginePersistence.ts"
+      "./src/enginePersistence.ts",
+      "./src/broker/gitBroker.ts",
+      "./src/broker/pmBroker.ts"
     ]
   },
   "peerDependencies": {
@@ -25,7 +27,7 @@
     "typescript": "^5.9.0"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test test/enforcement.test.ts test/delegate.test.ts test/roleTable.test.ts test/marker.test.ts test/enginePersistence.test.ts",
+    "test": "node --experimental-strip-types --test test/enforcement.test.ts test/delegate.test.ts test/roleTable.test.ts test/marker.test.ts test/enginePersistence.test.ts test/mcpStdioClient.test.ts test/broker.test.ts",
     "lint": "tsc --noEmit -p tsconfig.json"
   }
 }

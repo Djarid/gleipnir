@@ -57,7 +57,7 @@ test_selector_prefix = false
 # local digest resolved via `podman inspect ... --format '{{.Digest}}'`.
 [profile.broker]
 image = "localhost/gleipnir-sandbox-broker@sha256:549eeaa9e86ad977cea43eabbdd332f9889798a1c5bc4058dcc3e356faf16aea"
-test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py", "tests/test_broker_git_commit_guard.py", "tests/test_broker_git_mcp_server.py", "tests/test_broker_pm_mcp_server.py", "tests/test_broker_run_manifest.py"]
+test = ["python", "-m", "pytest", "-p", "no:cacheprovider", "tests/test_broker_git_guards.py", "tests/test_broker_pm_platform.py", "tests/test_broker_tool_surface.py", "tests/test_broker_stdlib_only.py", "tests/test_broker_git_commit_guard.py", "tests/test_broker_git_mcp_server.py", "tests/test_broker_pm_mcp_server.py", "tests/test_broker_run_manifest.py", "tests/test_broker_wire_protocol.py", "tests/test_broker_git_content_handlers.py", "tests/test_broker_git_diff_distill.py"]
 lint = ["python", "-m", "compileall", "-q", "src/gleipnir/broker"]
 coverage = { args = ["--cov=src/gleipnir/broker", "--cov-branch", "--cov-report=term-missing"], file_env = "COVERAGE_FILE", file_path = "/work/.scratch/.coverage" }
 test_selector_prefix = false
@@ -79,7 +79,7 @@ test_selector_prefix = false
 # Peer-dep resolvability empirically verified (RESOLVE_OK, --network=none, ro /work).
 [profile.pi]
 image = "localhost/gleipnir-sandbox-pi@sha256:e6bf277baf3a2511e6af0bfc431e99a4aebd50d0921343709e471a3519acb27d"
-test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts", "pi-package/test/roleTable.test.ts", "pi-package/test/engine.test.ts", "pi-package/test/allowTable.test.ts", "pi-package/test/judges.test.ts", "pi-package/test/router.test.ts", "pi-package/test/marker.test.ts", "pi-package/test/enginePersistence.test.ts"]
+test = ["node", "--experimental-strip-types", "--test", "pi-package/test/enforcement.test.ts", "pi-package/test/delegate.test.ts", "pi-package/test/roleTable.test.ts", "pi-package/test/engine.test.ts", "pi-package/test/allowTable.test.ts", "pi-package/test/judges.test.ts", "pi-package/test/router.test.ts", "pi-package/test/marker.test.ts", "pi-package/test/enginePersistence.test.ts", "pi-package/test/mcpStdioClient.test.ts", "pi-package/test/broker.test.ts"]
 lint = ["npx", "tsc", "--noEmit", "-p", "pi-package/tsconfig.json"]
 coverage = { unavailable = true, justified = "node:test built-in TS coverage deferred; S1 primitive-proof slice, no coverage tool wired (mirrors node profile)" }
 test_selector_prefix = false
