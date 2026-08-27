@@ -347,3 +347,216 @@ class TestIssueClose:
         args, kwargs = recorder.calls[0]
         assert args == (remote, "7")
         assert kwargs == {}
+
+
+# ---------------------------------------------------------------------------
+# pr_create -- error path (no delegation) + happy path (incl. empty-body
+# normalization, mirroring TestIssueCreate).
+# ---------------------------------------------------------------------------
+
+
+class TestPrCreate:
+    def test_error_path_returns_error_without_calling_platform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _stub_error_resolve(monkeypatch, "no remote")
+        monkeypatch.setattr(platform, "pr_create", _forbidden)
+
+        result = json.loads(mcp_server.pr_create("Add feature", "feature", "main"))
+        assert result == {"success": False, "error": "no remote"}
+
+    def test_happy_path_calls_platform_pr_create_with_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {"number": 5}})
+        monkeypatch.setattr(platform, "pr_create", recorder)
+
+        raw = mcp_server.pr_create(
+            "Add feature", "feature", "main", body="desc", repo_dir=""
+        )
+        result = json.loads(raw)
+
+        assert result == {"success": True, "data": {"number": 5}}
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "Add feature", "feature", "main", "desc")
+        assert kwargs == {}
+
+    def test_happy_path_empty_body_normalizes_to_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {}})
+        monkeypatch.setattr(platform, "pr_create", recorder)
+
+        mcp_server.pr_create("Add feature", "feature", "main", body="", repo_dir="")
+
+        assert len(recorder.calls) == 1
+        args, _kwargs = recorder.calls[0]
+        assert args == (remote, "Add feature", "feature", "main", None)
+
+
+# ---------------------------------------------------------------------------
+# pr_update -- error path + conditional field-building + happy path,
+# mirroring TestIssueUpdate.
+# ---------------------------------------------------------------------------
+
+
+class TestPrUpdate:
+    def test_error_path_returns_error_without_calling_platform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _stub_error_resolve(monkeypatch, "no remote")
+        monkeypatch.setattr(platform, "pr_update", _forbidden)
+
+        result = json.loads(mcp_server.pr_update("5"))
+        assert result == {"success": False, "error": "no remote"}
+
+    def test_all_fields_set_are_all_passed_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {}})
+        monkeypatch.setattr(platform, "pr_update", recorder)
+
+        raw = mcp_server.pr_update("5", title="T", body="B", state="closed")
+        result = json.loads(raw)
+
+        assert result == {"success": True, "data": {}}
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "5")
+        assert kwargs == {"title": "T", "body": "B", "state": "closed"}
+
+    def test_none_set_omits_all_field_kwargs(self, monkeypatch: pytest.MonkeyPatch):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {}})
+        monkeypatch.setattr(platform, "pr_update", recorder)
+
+        mcp_server.pr_update("5")
+
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "5")
+        assert kwargs == {}
+
+
+# ---------------------------------------------------------------------------
+# pr_comment -- error path + happy path, mirroring TestIssueComment.
+# ---------------------------------------------------------------------------
+
+
+class TestPrComment:
+    def test_error_path_returns_error_without_calling_platform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _stub_error_resolve(monkeypatch, "no remote")
+        monkeypatch.setattr(platform, "pr_comment", _forbidden)
+
+        result = json.loads(mcp_server.pr_comment("5", "hello"))
+        assert result == {"success": False, "error": "no remote"}
+
+    def test_happy_path_calls_platform_pr_comment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {"id": 99}})
+        monkeypatch.setattr(platform, "pr_comment", recorder)
+
+        raw = mcp_server.pr_comment("5", "the comment body", repo_dir="")
+        result = json.loads(raw)
+
+        assert result == {"success": True, "data": {"id": 99}}
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "5", "the comment body")
+        assert kwargs == {}
+
+
+# ---------------------------------------------------------------------------
+# pr_merge -- error path + happy path. AC-X2: no force/override arg exists
+# on the wrapper at all (asserted structurally, not just by value).
+# ---------------------------------------------------------------------------
+
+
+class TestPrMerge:
+    def test_error_path_returns_error_without_calling_platform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _stub_error_resolve(monkeypatch, "no remote")
+        monkeypatch.setattr(platform, "pr_merge", _forbidden)
+
+        result = json.loads(mcp_server.pr_merge("5"))
+        assert result == {"success": False, "error": "no remote"}
+
+    def test_happy_path_calls_platform_pr_merge(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {"merged": True}})
+        monkeypatch.setattr(platform, "pr_merge", recorder)
+
+        raw = mcp_server.pr_merge("5", repo_dir="")
+        result = json.loads(raw)
+
+        assert result == {"success": True, "data": {"merged": True}}
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "5")
+        assert kwargs == {}
+
+    def test_wrapper_signature_has_no_force_or_override_parameter(self):
+        import inspect
+
+        sig = inspect.signature(mcp_server.pr_merge)
+        param_names = set(sig.parameters.keys())
+        forbidden = {
+            "force",
+            "--force",
+            "-f",
+            "admin",
+            "admin_override",
+            "squash_admin_override",
+            "merge_when_pipeline_succeeds",
+        }
+        assert not (param_names & forbidden)
+
+
+# ---------------------------------------------------------------------------
+# pr_close -- error path + happy path, mirroring TestIssueClose.
+# ---------------------------------------------------------------------------
+
+
+class TestPrClose:
+    def test_error_path_returns_error_without_calling_platform(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        _stub_error_resolve(monkeypatch, "no remote")
+        monkeypatch.setattr(platform, "pr_close", _forbidden)
+
+        result = json.loads(mcp_server.pr_close("5"))
+        assert result == {"success": False, "error": "no remote"}
+
+    def test_happy_path_calls_platform_pr_close(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        remote = _remote_info()
+        _stub_success_resolve(monkeypatch, remote)
+        recorder = _Recorder({"success": True, "data": {"state": "closed"}})
+        monkeypatch.setattr(platform, "pr_close", recorder)
+
+        raw = mcp_server.pr_close("5", repo_dir="")
+        result = json.loads(raw)
+
+        assert result == {"success": True, "data": {"state": "closed"}}
+        assert len(recorder.calls) == 1
+        args, kwargs = recorder.calls[0]
+        assert args == (remote, "5")
+        assert kwargs == {}
