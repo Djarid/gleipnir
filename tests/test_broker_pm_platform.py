@@ -662,3 +662,419 @@ class TestGheAuthHeaderFixFullPath:
         assert rec.request.get_header("Authorization") == f"Bearer {FAKE_GITHUB_TOKEN}"
         assert rec.request.get_header("Private-token") is None
         assert "ghe.corp.example" in rec.request.full_url
+
+
+# ---------------------------------------------------------------------------
+# _pulls_endpoint / _mrs_endpoint -- new endpoint helpers (plan Trace row 80,
+# AC-E1/AC-E2). Mirror TestApiBaseAndEndpoints.
+# ---------------------------------------------------------------------------
+
+
+class TestPullsAndMrsEndpoints:
+    def test_pulls_endpoint_github_com(self):
+        remote = platform.RemoteInfo(
+            host="github.com", owner="owner", repo="repo", platform="github"
+        )
+        assert (
+            platform._pulls_endpoint(remote)
+            == "https://api.github.com/repos/owner/repo/pulls"
+        )
+
+    def test_pulls_endpoint_github_enterprise_custom_domain_uses_api_v3(self):
+        remote = platform.RemoteInfo(
+            host="ghe.corp.example", owner="o", repo="r", platform="github"
+        )
+        assert platform._pulls_endpoint(remote).startswith(
+            "https://ghe.corp.example/api/v3/repos/"
+        )
+        assert platform._pulls_endpoint(remote).endswith("/pulls")
+
+    def test_mrs_endpoint_gitlab_uses_api_v4_and_urlquoted_project_path(self):
+        remote = platform.RemoteInfo(
+            host="gitlab.com", owner="group/subgroup", repo="repo", platform="gitlab"
+        )
+        endpoint = platform._mrs_endpoint(remote)
+        assert endpoint.startswith("https://gitlab.com/api/v4/projects/")
+        assert "group%2Fsubgroup%2Frepo" in endpoint
+        assert endpoint.endswith("/merge_requests")
+
+
+# ---------------------------------------------------------------------------
+# pr_create -- no-token error, github/gitlab happy path, required head/base
+# (E3), gitlab field remap (E4).
+# ---------------------------------------------------------------------------
+
+
+class TestPrCreateWithoutToken:
+    def test_pr_create_without_token_returns_structured_error(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        def _network_forbidden(*args, **kwargs):
+            raise AssertionError("no-token path must not call _http_request")
+
+        monkeypatch.setattr(platform, "_http_request", _network_forbidden)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_create(
+            remote, title="Add feature", head="feature", base="main"
+        )
+
+        assert result["success"] is False
+        assert isinstance(result.get("error"), str) and result["error"]
+
+
+class TestPrCreateHappyPath:
+    def test_pr_create_github_posts_to_pulls_with_head_base_body(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"number": 5})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_create(
+            remote, title="Add feature", head="feature", base="main", body="desc"
+        )
+
+        assert result["success"] is True
+        assert result["data"] == {"number": 5}
+        call = recorder.calls[0]
+        assert call["method"] == "POST"
+        assert call["url"] == "https://api.github.com/repos/owner/repo/pulls"
+        assert call["json_body"] == {
+            "title": "Add feature",
+            "head": "feature",
+            "base": "main",
+            "body": "desc",
+        }
+        assert call["platform"] == "github"
+
+    def test_pr_create_github_without_body_omits_body_key(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"number": 5})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        platform.pr_create(remote, title="Add feature", head="feature", base="main")
+
+        assert "body" not in recorder.calls[0]["json_body"]
+
+    def test_pr_create_gitlab_posts_to_merge_requests_with_remapped_fields(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"iid": 3})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        result = platform.pr_create(
+            remote, title="Add feature", head="feature", base="main", body="desc"
+        )
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "POST"
+        assert "gitlab.com" in call["url"]
+        assert call["url"].endswith("/merge_requests")
+        assert call["json_body"] == {
+            "title": "Add feature",
+            "source_branch": "feature",
+            "target_branch": "main",
+            "description": "desc",
+        }
+        # E4: no leftover github-shaped keys.
+        assert "head" not in call["json_body"]
+        assert "base" not in call["json_body"]
+        assert "body" not in call["json_body"]
+        assert call["platform"] == "gitlab"
+
+    def test_pr_create_gitlab_without_body_omits_description_key(self, monkeypatch):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"iid": 3})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        platform.pr_create(remote, title="Add feature", head="feature", base="main")
+
+        assert "description" not in recorder.calls[0]["json_body"]
+
+    def test_pr_create_requires_head_and_base_arguments(self):
+        # E3/P2: no defaults -- omitting head/base is a TypeError, never a
+        # silently-guessed target.
+        import inspect
+
+        sig = inspect.signature(platform.pr_create)
+        assert sig.parameters["head"].default is inspect.Parameter.empty
+        assert sig.parameters["base"].default is inspect.Parameter.empty
+
+
+# ---------------------------------------------------------------------------
+# pr_update -- no-token error + PATCH(github)/PUT(gitlab) branches.
+# ---------------------------------------------------------------------------
+
+
+class TestPrUpdateWithoutToken:
+    def test_pr_update_without_token_returns_structured_error(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        def _network_forbidden(*args, **kwargs):
+            raise AssertionError("no-token path must not call _http_request")
+
+        monkeypatch.setattr(platform, "_http_request", _network_forbidden)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_update(remote, 5, title="New title")
+
+        assert result["success"] is False
+        assert isinstance(result.get("error"), str) and result["error"]
+
+
+class TestPrUpdate:
+    def test_pr_update_github_uses_patch_on_pulls(self, monkeypatch):
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"number": 5})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_update(remote, 5, title="New title")
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PATCH"
+        assert call["url"].endswith("/pulls/5")
+        assert call["json_body"] == {"title": "New title"}
+        assert call["platform"] == "github"
+
+    def test_pr_update_gitlab_uses_put_on_merge_requests(self, monkeypatch):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"iid": 3})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        result = platform.pr_update(remote, 3, title="New title")
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PUT"
+        assert call["url"].endswith("/merge_requests/3")
+        assert call["json_body"] == {"title": "New title"}
+        assert call["platform"] == "gitlab"
+
+
+# ---------------------------------------------------------------------------
+# pr_comment -- no-token error + E1 (github uses ISSUES endpoint, not pulls).
+# ---------------------------------------------------------------------------
+
+
+class TestPrCommentWithoutToken:
+    def test_pr_comment_without_token_returns_structured_error(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        def _network_forbidden(*args, **kwargs):
+            raise AssertionError("no-token path must not call _http_request")
+
+        monkeypatch.setattr(platform, "_http_request", _network_forbidden)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_comment(remote, 5, "a review comment")
+
+        assert result["success"] is False
+        assert isinstance(result.get("error"), str) and result["error"]
+
+
+class TestPrComment:
+    def test_pr_comment_github_uses_issues_endpoint_not_pulls(self, monkeypatch):
+        # E1: GitHub PR comments post to /issues/{n}/comments, NOT
+        # /pulls/{n}/comments (that's the review-comments endpoint).
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"id": 9})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_comment(remote, 5, "a review comment")
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "POST"
+        assert call["url"] == "https://api.github.com/repos/owner/repo/issues/5/comments"
+        assert "/pulls/" not in call["url"]
+        assert call["json_body"] == {"body": "a review comment"}
+        assert call["platform"] == "github"
+
+    def test_pr_comment_gitlab_uses_merge_request_notes_endpoint(self, monkeypatch):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"id": 9})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        result = platform.pr_comment(remote, 3, "a review comment")
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "POST"
+        assert call["url"].endswith("/merge_requests/3/notes")
+        assert call["json_body"] == {"body": "a review comment"}
+        assert call["platform"] == "gitlab"
+
+
+# ---------------------------------------------------------------------------
+# pr_merge -- no-token error + E2 (no issue_* analog, no force/override key).
+# ---------------------------------------------------------------------------
+
+
+class TestPrMergeWithoutToken:
+    def test_pr_merge_without_token_returns_structured_error(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        def _network_forbidden(*args, **kwargs):
+            raise AssertionError("no-token path must not call _http_request")
+
+        monkeypatch.setattr(platform, "_http_request", _network_forbidden)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_merge(remote, 5)
+
+        assert result["success"] is False
+        assert isinstance(result.get("error"), str) and result["error"]
+
+
+_FORBIDDEN_MERGE_KEYS = {
+    "force",
+    "--force",
+    "-f",
+    "admin",
+    "admin_override",
+    "squash_admin_override",
+    "merge_when_pipeline_succeeds",
+}
+
+
+class TestPrMerge:
+    def test_pr_merge_github_puts_to_pulls_merge_with_no_override_key(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"merged": True})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_merge(remote, 5)
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PUT"
+        assert call["url"].endswith("/pulls/5/merge")
+        body_keys = set((call["json_body"] or {}).keys())
+        assert not (body_keys & _FORBIDDEN_MERGE_KEYS)
+        assert call["platform"] == "github"
+
+    def test_pr_merge_gitlab_puts_to_merge_requests_merge_with_no_override_key(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"state": "merged"})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        result = platform.pr_merge(remote, 3)
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PUT"
+        assert call["url"].endswith("/merge_requests/3/merge")
+        body_keys = set((call["json_body"] or {}).keys())
+        assert not (body_keys & _FORBIDDEN_MERGE_KEYS)
+        assert call["platform"] == "gitlab"
+
+    def test_pr_merge_has_no_force_or_override_parameter_in_signature(self):
+        # AC-X2: the platform.pr_merge signature accepts only an identifier
+        # (and remote) -- no force/admin/override parameter at all.
+        import inspect
+
+        sig = inspect.signature(platform.pr_merge)
+        param_names = set(sig.parameters.keys())
+        assert not (param_names & _FORBIDDEN_MERGE_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# pr_close -- no-token error + PATCH{state:closed}(github, PULLS endpoint)
+# vs PUT{state_event:close}(gitlab).
+# ---------------------------------------------------------------------------
+
+
+class TestPrCloseWithoutToken:
+    def test_pr_close_without_token_returns_structured_error(self, monkeypatch):
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        def _network_forbidden(*args, **kwargs):
+            raise AssertionError("no-token path must not call _http_request")
+
+        monkeypatch.setattr(platform, "_http_request", _network_forbidden)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_close(remote, 5)
+
+        assert result["success"] is False
+        assert isinstance(result.get("error"), str) and result["error"]
+
+
+class TestPrClose:
+    def test_pr_close_github_uses_patch_state_closed_on_pulls_endpoint(
+        self, monkeypatch
+    ):
+        monkeypatch.setenv("GITHUB_TOKEN", FAKE_GITHUB_TOKEN)
+        monkeypatch.delenv("GITLAB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"number": 5})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("https://github.com/owner/repo.git")
+        result = platform.pr_close(remote, 5)
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PATCH"
+        assert call["url"].endswith("/pulls/5")
+        assert "/issues/" not in call["url"]
+        assert call["json_body"] == {"state": "closed"}
+        assert call["platform"] == "github"
+
+    def test_pr_close_gitlab_uses_put_state_event_close(self, monkeypatch):
+        monkeypatch.setenv("GITLAB_TOKEN", FAKE_GITLAB_TOKEN)
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+
+        recorder = _RequestRecorder({"iid": 3})
+        monkeypatch.setattr(platform, "_http_request", recorder)
+
+        remote = platform.parse_remote_url("git@gitlab.com:owner/repo.git")
+        result = platform.pr_close(remote, 3)
+
+        assert result["success"] is True
+        call = recorder.calls[0]
+        assert call["method"] == "PUT"
+        assert call["url"].endswith("/merge_requests/3")
+        assert call["json_body"] == {"state_event": "close"}
+        assert call["platform"] == "gitlab"

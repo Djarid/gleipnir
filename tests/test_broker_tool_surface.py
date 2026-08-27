@@ -37,7 +37,17 @@ from gleipnir.broker.pm import mcp_server as pm_mcp_server
 
 
 EXPECTED_GIT_TOOLS = {"git_status", "git_diff", "commit_changes", "push_current_branch"}
-EXPECTED_PM_TOOLS = {"issue_create", "issue_update", "issue_comment", "issue_close"}
+EXPECTED_PM_TOOLS = {
+    "issue_create",
+    "issue_update",
+    "issue_comment",
+    "issue_close",
+    "pr_create",
+    "pr_update",
+    "pr_comment",
+    "pr_merge",
+    "pr_close",
+}
 
 FORBIDDEN_PARAM_NAMES = {"force", "--force", "-f"}
 
@@ -127,11 +137,12 @@ class TestGitBrokerToolSurface:
 
 
 class TestPmBrokerToolSurface:
-    def test_exactly_the_four_pm_tools_are_registered(self):
+    def test_exactly_the_nine_pm_tools_are_registered(self):
         server = _get_server(pm_mcp_server)
         assert _tool_names(server) == EXPECTED_PM_TOOLS, (
             "gleipnir-pm must expose EXACTLY issue_create, issue_update, "
-            "issue_comment, issue_close -- no more, no less (T-D)"
+            "issue_comment, issue_close, pr_create, pr_update, pr_comment, "
+            "pr_merge, pr_close -- no more, no less (T-D)"
         )
 
     def test_no_pm_tool_exposes_a_force_parameter(self):

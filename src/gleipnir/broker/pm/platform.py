@@ -199,6 +199,19 @@ def _issues_endpoint(remote: RemoteInfo) -> str:
     return f"{base}/projects/{encoded}/issues"
 
 
+def _pulls_endpoint(remote: RemoteInfo) -> str:
+    """GitHub pulls collection URL (create/update/merge/close land here)."""
+    base = _api_base(remote)
+    return f"{base}/repos/{_project_path(remote)}/pulls"
+
+
+def _mrs_endpoint(remote: RemoteInfo) -> str:
+    """GitLab merge-requests collection URL (all five pr_* verbs use it)."""
+    base = _api_base(remote)
+    encoded = _url_quote(_project_path(remote), safe="")
+    return f"{base}/projects/{encoded}/merge_requests"
+
+
 # ---------------------------------------------------------------------------
 # issue_* verbs
 # ---------------------------------------------------------------------------
@@ -275,6 +288,128 @@ def issue_close(remote: RemoteInfo, issue_id: Any) -> Dict[str, Any]:
         method, payload = "PATCH", {"state": "closed"}
     else:
         method, payload = "PUT", {"state_event": "close"}
+
+    data = _http_request(
+        method, url, token=token, platform=remote.platform, json_body=payload
+    )
+    return {"success": True, "data": data}
+
+
+# ---------------------------------------------------------------------------
+# pr_* verbs -- PR/MR lifecycle. Mirror issue_* exactly except pr_merge (no
+# issue_* analog) and pr_comment (github uses the ISSUES endpoint, E1).
+# ---------------------------------------------------------------------------
+
+
+def pr_create(
+    remote: RemoteInfo,
+    title: str,
+    head: str,
+    base: str,
+    body: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create a PR/MR. `head`/`base` are REQUIRED (P2) -- no silent default,
+    no auto-detected branch. Structured error, no network, if no token."""
+    token = get_token(remote.platform)
+    if not token:
+        return _no_token_error(remote.platform)
+
+    if remote.platform == "github":
+        payload: Dict[str, Any] = {"title": title, "head": head, "base": base}
+        if body is not None:
+            payload["body"] = body
+        url = _pulls_endpoint(remote)
+    else:
+        payload = {
+            "title": title,
+            "source_branch": head,
+            "target_branch": base,
+        }
+        if body is not None:
+            payload["description"] = body
+        url = _mrs_endpoint(remote)
+
+    data = _http_request(
+        "POST", url, token=token, platform=remote.platform, json_body=payload
+    )
+    return {"success": True, "data": data}
+
+
+def pr_update(remote: RemoteInfo, pr_id: Any, **fields: Any) -> Dict[str, Any]:
+    """Update fields on an existing PR/MR. Structured error if no token."""
+    token = get_token(remote.platform)
+    if not token:
+        return _no_token_error(remote.platform)
+
+    if remote.platform == "github":
+        method, url = "PATCH", f"{_pulls_endpoint(remote)}/{pr_id}"
+    else:
+        method, url = "PUT", f"{_mrs_endpoint(remote)}/{pr_id}"
+
+    data = _http_request(
+        method, url, token=token, platform=remote.platform, json_body=fields
+    )
+    return {"success": True, "data": data}
+
+
+def pr_comment(remote: RemoteInfo, pr_id: Any, body: str) -> Dict[str, Any]:
+    """Add a comment to a PR/MR. GitHub PR comments use the ISSUES endpoint
+    (a PR IS an issue for comment purposes, E1); GitLab uses MR notes.
+    Structured error if no token."""
+    token = get_token(remote.platform)
+    if not token:
+        return _no_token_error(remote.platform)
+
+    if remote.platform == "github":
+        url = f"{_issues_endpoint(remote)}/{pr_id}/comments"
+    else:
+        url = f"{_mrs_endpoint(remote)}/{pr_id}/notes"
+
+    data = _http_request(
+        "POST", url, token=token, platform=remote.platform, json_body={"body": body}
+    )
+    return {"success": True, "data": data}
+
+
+def pr_merge(remote: RemoteInfo, pr_id: Any) -> Dict[str, Any]:
+    """Merge a PR/MR. Plain merge only -- NO force/admin-override/squash
+    -override/merge_when_*-bypass argument exists (P3): the endpoint takes
+    only an identifier. Structured error if no token."""
+    token = get_token(remote.platform)
+    if not token:
+        return _no_token_error(remote.platform)
+
+    if remote.platform == "github":
+        url = f"{_pulls_endpoint(remote)}/{pr_id}/merge"
+    else:
+        url = f"{_mrs_endpoint(remote)}/{pr_id}/merge"
+
+    data = _http_request(
+        "PUT", url, token=token, platform=remote.platform, json_body={}
+    )
+    return {"success": True, "data": data}
+
+
+def pr_close(remote: RemoteInfo, pr_id: Any) -> Dict[str, Any]:
+    """Close a PR/MR. GitHub closes via the PULLS endpoint (NOT issues --
+    this is an update-a-PR call), GitLab via `state_event`. Structured error
+    if no token."""
+    token = get_token(remote.platform)
+    if not token:
+        return _no_token_error(remote.platform)
+
+    if remote.platform == "github":
+        method, url, payload = (
+            "PATCH",
+            f"{_pulls_endpoint(remote)}/{pr_id}",
+            {"state": "closed"},
+        )
+    else:
+        method, url, payload = (
+            "PUT",
+            f"{_mrs_endpoint(remote)}/{pr_id}",
+            {"state_event": "close"},
+        )
 
     data = _http_request(
         method, url, token=token, platform=remote.platform, json_body=payload
