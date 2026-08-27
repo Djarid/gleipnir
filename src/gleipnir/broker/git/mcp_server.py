@@ -44,6 +44,8 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 
 from gleipnir.broker.git import guards
+from gleipnir.broker.git.content_handlers import dispatch, register
+from gleipnir.broker.git.diff_hunk_handler import DiffHunkTruncationHandler
 
 mcp = FastMCP(
     "gleipnir-git",
@@ -57,6 +59,15 @@ mcp = FastMCP(
         "path exists anywhere in this server."
     ),
 )
+
+# ---------------------------------------------------------------------------
+# Content-handler pilot registration (`.gleipnir/plans/git-diff-distill.md`,
+# Assemble Step 4). Registered ONCE at module import so dispatch is ready by
+# the time `git_diff` runs. This is the single composition-root site that
+# names the concrete handler class; the dispatcher itself never does.
+# ---------------------------------------------------------------------------
+
+register(DiffHunkTruncationHandler())
 
 
 # ---------------------------------------------------------------------------
@@ -326,7 +337,12 @@ def git_diff(
         return json.dumps(
             {"success": False, "error": result.get("error") or result.get("stderr", "")}
         )
-    return json.dumps({"success": True, "diff": result["stdout"]})
+    # Content-only boundary: the handler sees ONLY this raw stdout string and
+    # the opaque "diff" hint -- never the envelope, success flag, or any
+    # commit/secret-scan verdict (structurally unreachable by construction;
+    # see content_handlers/protocol.py).
+    processed = dispatch(result["stdout"], "diff")
+    return json.dumps({"success": True, "diff": processed.content})
 
 
 # ---------------------------------------------------------------------------
