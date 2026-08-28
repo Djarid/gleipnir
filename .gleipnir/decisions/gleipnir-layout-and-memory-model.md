@@ -72,6 +72,19 @@ Trust tiers, as code (the authority ladder):
 
 ## The three write paths
 
+> **NARROWED IN PART by `tier3-signed-approval.md` (signature-gated Tier-3
+> write path).** Write path #1 below ("no in-framework agent writes Tier-3,
+> ever") now has ONE verified exception: the signature-gated `tier3-writer`
+> may write Tier-3 when — and only when — `tier3-gate.ts`'s fail-closed hook
+> has verified a valid, fresh (≤180s), content-bound, identity-bound signed
+> approval token exists for that exact change, minted via an out-of-band
+> Tailscale/Entra-resolved approval flow. This is a narrowing with a
+> cryptographic proof obligation, not a loosening: the old "ever" had no
+> verification. Every OTHER Tier-3 write path (operator editor / build mode)
+> and every other roster agent's Tier-3-unwritability are unchanged. The
+> `keys/` mode-600 floor is retained. See `tier3-signed-approval.md` for the
+> governing design, the honesty ledger, and the cooperative-until-S-2 scope.
+
 1. **Tier 3 (POLICY) — operator-only.** No in-framework agent writes it, ever.
    Authored by the operator via the escape hatch (`/build` or an editor), or a
    future signed policy-change command. This is G-1 unchanged. The roster's
