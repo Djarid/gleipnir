@@ -36,6 +36,12 @@ from pathlib import Path
 SRC_GLEIPNIR_DIR = Path(__file__).resolve().parents[1] / "src" / "gleipnir"
 BROKER_DIR = SRC_GLEIPNIR_DIR / "broker"
 
+# The single non-broker file permitted to import the MCP SDK, per the
+# .gleipnir/decisions/runtime-and-deps.md "Boundary drawn sharply" carve-out
+# (Decision 20 of ../.gleipnir/plans/tier3-mcp-approval-launcher.md). This is
+# ONE named file, not an approval/** package exclusion.
+APPROVAL_MCP_SERVER = SRC_GLEIPNIR_DIR / "approval" / "mcp_server.py"
+
 # Packages this test currently knows must exist and must stay `mcp`-free.
 # _core_package_dirs() is dynamic (iterdir-based, excludes "broker"), so a
 # newly added core package is picked up automatically; this set is a pinned
@@ -82,12 +88,15 @@ class TestEnforcementCoreNeverImportsMcp:
     def test_no_core_package_imports_mcp(self):
         for pkg_dir in _core_package_dirs():
             for py_file in _py_files(pkg_dir):
+                if py_file == APPROVAL_MCP_SERVER:
+                    continue  # named carve-out (runtime-and-deps.md, Decision 20)
                 roots = _top_level_import_roots(py_file)
                 assert "mcp" not in roots, (
                     f"{py_file.relative_to(SRC_GLEIPNIR_DIR)} imports `mcp` -- "
                     "the mcp SDK carve-out (.gleipnir/decisions/"
-                    "runtime-and-deps.md) applies to broker/** ONLY; it must "
-                    "not leak into the enforcement core"
+                    "runtime-and-deps.md) applies to broker/** and the single "
+                    "named file approval/mcp_server.py ONLY; it must not leak "
+                    "into the enforcement core"
                 )
 
     def test_core_package_set_includes_the_expected_floor(self):

@@ -42,6 +42,12 @@ if importlib.util.find_spec("mcp") is None:
     # `test_broker_git_content_handlers.py` here -- that file is stdlib-only
     # and is meant to run under the lean `python` profile as well.
     collect_ignore.append("test_broker_git_diff_distill.py")
+    # `.gleipnir/plans/tier3-mcp-approval-launcher.md`, Assemble Step 1: the
+    # approval-subsystem MCP wrapper test also imports `mcp` transitively
+    # (`from gleipnir.approval import mcp_server` -> `from mcp.server.fastmcp
+    # import FastMCP`). Same guard, same reason -- it runs fully under the
+    # `broker` sandbox profile instead.
+    collect_ignore.append("test_approval_mcp_server.py")
 
 
 def pytest_configure(config):

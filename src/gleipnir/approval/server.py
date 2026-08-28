@@ -9,10 +9,17 @@ ONE resolver (`TailscaleResolver`, Route α) and, per request, builds a
 `ApprovalToken` (180s freshness), and writes it to `token_dir`
 (`.gleipnir/var/tmp/`, Tier-0, Decision 17).
 
-**No auto-start (Decision 15).** This module only runs when the operator
-starts it, via `bin/gleipnir-approval-server`; it is a cooperative,
-long-running process the operator starts manually and Ctrl-C stops -- not a
-daemon, not launched by any agent.
+**Launch supervision (Decision 15, superseded by
+`.gleipnir/plans/tier3-mcp-approval-launcher.md`).** This module's listener
+may be started either by the operator's manual shim
+(`bin/gleipnir-approval-server`, a cooperative process the operator starts
+and Ctrl-C stops) or as a supervised subprocess spawned by opencode's
+`gleipnir-approval` local MCP (`gleipnir.approval.mcp_server`, which imports
+`run_server` and calls it on a background thread). Either launch path is
+fine: the security property this module provides was never *who launches
+the process* but that the HMAC signing key stays unreachable to the agent
+tool surface (Decision 3) -- launching confers process-supervision only,
+never the ability to mint a token.
 
 **Pure-core / thin-edge split** (mirrors `preflight.boundary` and
 `sandbox.runtime`): `capture_approval` is the fully-unit-testable
@@ -381,8 +388,11 @@ def run_server(
     Registers `TailscaleResolver`, loads the G-3.1 key (fail-closed --
     `KeyUnavailable` propagates, refusing to start rather than serving
     without a usable key), and serves forever until interrupted
-    (Ctrl-C / SIGINT). No auto-start: nothing calls this except the
-    operator's explicit shim invocation."""
+    (Ctrl-C / SIGINT). May be called either by the operator's explicit shim
+    invocation or by `gleipnir.approval.mcp_server` on a background thread
+    when opencode supervises the listener -- both launch paths are equally
+    safe because the key stays unreachable to the agent tool surface
+    (Decision 3), not because of who calls this function."""
 
     register_default_resolvers()
     key = load_key(key_file)
