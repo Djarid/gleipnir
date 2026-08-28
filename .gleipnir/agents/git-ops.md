@@ -49,6 +49,7 @@ color: "#7ed321"
 # NOT block MCP tools for a subagent). Every other roster agent denies BOTH.
 tools:
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # git-ops (broker single-holder)

@@ -1,9 +1,16 @@
 #!/bin/sh
 # Gleipnir Tier-3 out-of-band approval listener -- operator start shim.
 #
-# OUT-OF-FRAMEWORK: run by the OPERATOR, manually, when they want to accept
-# out-of-band Tier-3 approvals -- never by an in-framework agent, and never
-# auto-started (plan `.gleipnir/plans/tier3-signed-approval.md` Decision 15).
+# MANUAL FALLBACK (Decision 15, superseded by
+# `.gleipnir/plans/tier3-mcp-approval-launcher.md`): run by the OPERATOR,
+# manually, when they want to start the listener outside an opencode session
+# (e.g. debugging, CI, or a headless run). The PRIMARY supervised launch path
+# is now the `gleipnir-approval` local MCP (`python -m
+# gleipnir.approval.mcp_server`), spawned by opencode per `opencode.jsonc`'s
+# `mcp."gleipnir-approval"` block -- NOT YET APPLIED as of this delegation
+# (Tier-3, operator/build-mode territory). Both launch paths exec the SAME
+# `run_server` entrypoint below, so this shim costs nothing to keep and
+# remains genuinely useful when opencode is not the launcher.
 # A long-running, cooperative process: the operator starts it and Ctrl-C
 # stops it. Deliberately a THIN shim (same shape as bin/gleipnir-preflight
 # and bin/gleipnir-sandbox): it does nothing but exec the stdlib-Python
@@ -11,11 +18,12 @@
 # resolution, token minting, the HTTP surface) lives there and is
 # unit-tested.
 #
-# This script is NOT granted to any agent's allowlist
-# (.gleipnir/agents/*.md) and is not referenced by any agent-reachable tool
-# call -- a guard whose activation is validated by the population it guards
-# is the G-3 forgeable-evidence failure applied to activation, which this
-# must avoid.
+# SECURITY RATIONALE (corrected): the property this shim -- and the MCP
+# launch path -- protects was never "who launches the process" but that the
+# HMAC signing key stays unreachable to the agent tool surface (Decision 3):
+# launching confers process-supervision only, never the ability to mint a
+# token. See `src/gleipnir/approval/mcp_server.py`'s module docstring for
+# the fuller rationale; not duplicated here.
 #
 # Binds 127.0.0.1 only (no public surface); the operator fronts it with
 # `tailscale serve` (an operator OS act, not built by this shim) for

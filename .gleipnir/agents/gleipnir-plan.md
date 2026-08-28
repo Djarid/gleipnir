@@ -23,6 +23,7 @@ color: "#c586ff"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # gleipnir-plan (planning role)

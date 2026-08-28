@@ -87,6 +87,16 @@
         "GITHUB_TOKEN": "{env:GITHUB_TOKEN}"
       },
       "enabled": true
+    },
+    "gleipnir-approval": {
+      "type": "local",
+      "command": [".venv/bin/python", "-m", "gleipnir.approval.mcp_server"],
+      "environment": {
+        "PYTHONPATH": "src",
+        "GLEIPNIR_MARKER_KEY_FILE": "{env:GLEIPNIR_MARKER_KEY_FILE}",
+        "GLEIPNIR_APPROVAL_BASE_URL": "{env:GLEIPNIR_APPROVAL_BASE_URL}"
+      },
+      "enabled": true
     }
   },
 

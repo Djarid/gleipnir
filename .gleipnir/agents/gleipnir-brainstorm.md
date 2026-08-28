@@ -28,6 +28,7 @@ color: "#ffb454"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # gleipnir-brainstorm (design explorer + decision-surfacing gate)

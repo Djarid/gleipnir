@@ -41,6 +41,7 @@ color: "#4a90d9"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # session-scribe (Tier-0 bookkeeping writer)

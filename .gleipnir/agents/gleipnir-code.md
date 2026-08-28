@@ -62,6 +62,7 @@ color: "#4aa3ff"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # gleipnir-code (corrected exemplar)

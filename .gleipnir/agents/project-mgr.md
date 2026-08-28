@@ -21,6 +21,7 @@ color: "#bd10e0"
 # namespace. TOP-LEVEL `tools:` key with BOOLEAN values (false = deny).
 tools:
   "gleipnir-git_*": false
+  "gleipnir-approval_*": false
 ---
 
 # project-mgr (single-namespace)
