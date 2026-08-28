@@ -1,3 +1,32 @@
+# tier3-gate.ts v2 — READY TO APPLY VERBATIM
+
+**READY TO APPLY VERBATIM to `.gleipnir/plugins/tier3-gate.ts` (REPLACES the
+currently-applied version).**
+
+This is a **full-file replacement**, not a patch: the operator can apply it via
+a straight file copy/overwrite of `.gleipnir/plugins/tier3-gate.ts` with the
+code block below (everything between the ```` ```typescript ```` fences).
+
+- **Source of the change:** a `gleipnir-code` delegation (this session) drafted
+  this complete replacement per `.gleipnir/plans/tier3-approval-ux.md`
+  (Decisions P1/P2/P8), adding staging-on-refuse / `GateRefused` /
+  `computeChangeHash` / `stagePendingContent` / `buildApprovalUrl`. It could not
+  be persisted directly because `.gleipnir/plugins/**` is Tier-3 enforcement
+  space (no roster agent, including `gleipnir-code` and `gleipnir-plan`, holds a
+  write grant there). This Tier-0 plans file is the hand-off vehicle.
+- **Baseline replaced:** the currently-applied `.gleipnir/plugins/tier3-gate.ts`
+  (336 lines, confirmed on disk this session).
+- **Why Tier-3-write-gated / operator-only:** `.gleipnir/plugins/**` is in the
+  enforcement-path set `E` (`stage-role-map.md`); this file IS the guard, so it
+  must be applied by the operator / build-mode only — exactly like
+  `sequence-gate.ts` / `git-guard.ts` / `advance-hook.ts`.
+- **How to apply:** overwrite `.gleipnir/plugins/tier3-gate.ts` with the block
+  below (copy/paste the fenced contents, or redirect them to the file). No merge
+  step is needed — it is the entire new file.
+
+---
+
+```typescript
 // Gleipnir Tier-3 write-block gate (Tier-3 enforcement code) — the
 // deterministic write-block wiring for the out-of-band signed-approval
 // channel.
@@ -485,3 +514,4 @@ export const Tier3Gate = async ({ directory }: { directory: string }) => {
     },
   }
 }
+```

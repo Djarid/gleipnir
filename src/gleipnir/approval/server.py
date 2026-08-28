@@ -25,9 +25,12 @@ with injected fakes (Stress-test T-17) rather than driving live HTTP.
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
+import html
 import http.server
 import json
+import re
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -39,6 +42,14 @@ from .token import ApprovalToken, mint_approval
 DEFAULT_BIND_HOST = "127.0.0.1"
 DEFAULT_BIND_PORT = 8765
 
+# The full-hash form a staged `pending-<hash>.json` filename may carry (P1/E7)
+# -- lowercase hex sha256, exactly 64 chars. Validated BEFORE any filesystem
+# join so a malformed/`../`-shaped `<hash>` URL segment can never escape
+# `token_dir` (E7/S7).
+_CHANGE_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+
+_APPROVE_PREFIX = "/approve/"
+
 
 def _repo_root() -> Path:
     # src/gleipnir/approval/server.py -> repo root is three parents up.
@@ -48,6 +59,31 @@ def _repo_root() -> Path:
 def default_token_dir() -> Path:
     """`.gleipnir/var/tmp/` -- Tier-0, gitignored, disposable (Decision 17)."""
     return _repo_root() / ".gleipnir" / "var" / "tmp"
+
+
+_NO_STAGED_CHANGE_MESSAGE = (
+    b"no staged change for this hash -- it may be stale, already approved, "
+    b"or the URL is wrong"
+)
+
+
+def _read_target_bytes(file_path: object) -> bytes | None:
+    """Best-effort read of the envelope's `filePath` for the review-page
+    diff base (P5/E5) -- display-only, NEVER hashed/minted (see the
+    Deliberately-deferred non-blocker note: `filePath` reaches only a
+    display read, unlike `<hash>`, which reaches a filesystem join and is
+    therefore validated, E7). Returns `None` (not an exception) on any
+    fault -- absent file, wrong type, unreadable -- so a poisoned/odd
+    `filePath` can at worst degrade the diff to "new file", never crash the
+    review page."""
+
+    if not isinstance(file_path, str) or not file_path:
+        return None
+    target = _repo_root() / file_path
+    try:
+        return target.read_bytes()
+    except OSError:
+        return None
 
 
 def compute_change_hash(content: bytes) -> str:
@@ -62,6 +98,108 @@ def build_request_context(remote_ip: str, headers: Mapping[str, str]) -> Request
 
 def token_path_for(token_dir: Path, change_hash: str) -> Path:
     return token_dir / f"approval-{change_hash[:16]}.json"
+
+
+def staged_path_for(token_dir: Path, change_hash: str) -> Path:
+    """`pending-<change_hash>.json` -- the FULL hash (distinct from
+    `token_path_for`'s 16-char prefix for the minted token; do not
+    conflate). Written by the hook on REFUSE (P1), read here by
+    `load_staged`."""
+
+    return token_dir / f"pending-{change_hash}.json"
+
+
+def load_staged(token_dir: Path, change_hash: str) -> dict | None:
+    """Read + JSON-parse the staged envelope; `None` on any fault (absent,
+    unparseable, or a malformed `<hash>`) -- the caller maps that to a 404
+    (P7). Pure, unit-testable.
+
+    **Explicit UTF-8 read (REQUIRED, not implicit):** reads the file as
+    `read_bytes()` then `json.loads(raw)` -- `json.loads` decodes UTF-8 per
+    the JSON spec -- NEVER a bare `Path.read_text()` with no encoding
+    argument, whose decode is locale/platform-dependent and could corrupt
+    multibyte content before it is hashed (P2/S13).
+
+    **No path traversal (E7):** `<change_hash>` is validated as
+    `[0-9a-f]{64}` BEFORE `staged_path_for` ever builds a path from it, so a
+    `../` segment (or any other non-hex shape) can never reach the
+    filesystem join -- it 404s here instead.
+    """
+
+    if not _CHANGE_HASH_RE.match(change_hash):
+        return None
+    path = staged_path_for(token_dir, change_hash)
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
+def render_review_page(envelope: dict, current_on_disk: bytes | None) -> bytes:
+    """Pure HTML builder for `GET /approve/<hash>` -- no I/O, no minting.
+
+    HTML-escapes `envelope["content"]` for display (P4) -- the bytes that
+    get hashed/minted are ALWAYS `envelope["content"]` itself, never this
+    escaped display copy (the what-you-sign invariant, Design Intent). Shows
+    a `difflib.unified_diff` against `current_on_disk` (decoded UTF-8,
+    `errors="replace"`) when given, or a "new file" notice when `None`
+    (P5/E5). Emits a `<form method="POST" action="/approve/<hash>">` with a
+    single submit button and NO content field (P3) -- `<hash>` is
+    RECOMPUTED from `envelope["content"]` here (the same sha256 that keyed
+    the staged filename and the approval URL), never passed in separately,
+    so the form action can never diverge from what was actually staged.
+    """
+
+    content = envelope["content"]
+    file_path = str(envelope.get("filePath", ""))
+    tool = str(envelope.get("tool", ""))
+    staged_at = str(envelope.get("staged_at", ""))
+    change_hash = compute_change_hash(content.encode("utf-8"))
+    escaped_content = html.escape(content, quote=True)
+
+    if current_on_disk is None:
+        diff_html = "<p><em>new file (no on-disk base to diff against)</em></p>"
+    else:
+        base_text = current_on_disk.decode("utf-8", errors="replace")
+        diff_lines = list(
+            difflib.unified_diff(
+                base_text.splitlines(keepends=True),
+                content.splitlines(keepends=True),
+                fromfile=file_path or "on-disk",
+                tofile="staged",
+            )
+        )
+        if diff_lines:
+            escaped_diff = "".join(
+                html.escape(line, quote=True) for line in diff_lines
+            )
+            diff_html = f"<pre>{escaped_diff}</pre>"
+        else:
+            diff_html = "<p><em>no textual difference from the on-disk file</em></p>"
+
+    body = (
+        "<html><body>"
+        "<h1>Gleipnir Tier-3 change review</h1>"
+        f"<p>tool: {html.escape(tool, quote=True)} | "
+        f"filePath: {html.escape(file_path, quote=True)} | "
+        f"staged_at: {html.escape(staged_at, quote=True)}</p>"
+        "<h2>Diff against on-disk</h2>"
+        f"{diff_html}"
+        "<h2>Full staged content</h2>"
+        f"<pre>{escaped_content}</pre>"
+        f'<form method="POST" action="/approve/{change_hash}">'
+        '<button type="submit">Approve</button>'
+        "</form>"
+        "</body></html>"
+    )
+    return body.encode("utf-8")
 
 
 def capture_approval(
@@ -122,14 +260,45 @@ class ApprovalRequestHandler(http.server.BaseHTTPRequestHandler):
             )
             self._send(200, body, content_type="text/html")
             return
+        if self.path.startswith(_APPROVE_PREFIX):
+            change_hash = self.path[len(_APPROVE_PREFIX) :]
+            token_dir = self._resolve_token_dir()
+            envelope = load_staged(token_dir, change_hash)
+            if envelope is None:
+                self._send(404, _NO_STAGED_CHANGE_MESSAGE, content_type="text/plain")
+                return
+            current_on_disk = _read_target_bytes(envelope.get("filePath"))
+            body = render_review_page(envelope, current_on_disk)
+            self._send(200, body, content_type="text/html")
+            return
         self._send(404, b"not found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/approve":
-            self._send(404, b"not found")
+        if self.path == "/approve":
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            pending_content = self.rfile.read(length) if length else b""
+            self._mint_and_respond(pending_content)
             return
-        length = int(self.headers.get("Content-Length", "0") or "0")
-        pending_content = self.rfile.read(length) if length else b""
+        if self.path.startswith(_APPROVE_PREFIX):
+            change_hash = self.path[len(_APPROVE_PREFIX) :]
+            token_dir = self._resolve_token_dir()
+            envelope = load_staged(token_dir, change_hash)
+            if envelope is None:
+                self._send(404, _NO_STAGED_CHANGE_MESSAGE, content_type="text/plain")
+                return
+            self._mint_and_respond(envelope["content"].encode("utf-8"))
+            return
+        self._send(404, b"not found")
+
+    def _resolve_token_dir(self) -> Path:
+        token_dir = type(self).token_dir
+        return token_dir if token_dir is not None else default_token_dir()
+
+    def _mint_and_respond(self, pending_content: bytes) -> None:
+        """Shared POST core (P3, DRY): the SAME `capture_approval` call site
+        for both the existing raw-body `/approve` and the new hash-scoped
+        `/approve/<hash>` -- reused unchanged, never duplicated."""
+
         try:
             token = capture_approval(
                 remote_ip=self.client_address[0],

@@ -67,7 +67,17 @@
 
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, readFileSync, existsSync } from "node:fs"
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  chmodSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+  existsSync,
+} from "node:fs"
+import { createHash } from "node:crypto"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -78,6 +88,10 @@ import {
   resultingContentFor,
   isTier3Path,
   PreflightUnavailable,
+  GateRefused,
+  computeChangeHash,
+  stagePendingContent,
+  buildApprovalUrl,
 } from "../.gleipnir/plugins/tier3-gate.ts"
 
 // A representative Tier-3 target under each routed prefix, plus the one
@@ -171,6 +185,18 @@ async function runBefore(dir, tool, filePath, extraArgs = {}) {
   await hook({ tool }, { args: { filePath, ...extraArgs } })
 }
 
+// The staged `pending-<hash>.json` files that currently exist under a repo's
+// `.gleipnir/var/tmp/` staging dir (plan Trace section A's `STAGING_DIR_REL`)
+// -- used by the S12 tests below to assert staging happened (or, decisively,
+// did NOT happen) for a given caught-error class.
+function stagedFilesIn(dir) {
+  const stagingDir = join(dir, ".gleipnir", "var", "tmp")
+  if (!existsSync(stagingDir)) return []
+  return readdirSync(stagingDir).filter(
+    (f) => f.startsWith("pending-") && f.endsWith(".json"),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Pure decideFromExit contract
 // ---------------------------------------------------------------------------
@@ -189,6 +215,36 @@ test("decideFromExit: 3 (key-unavailable REFUSE) -> throws", () => {
 
 test("decideFromExit: any other non-zero code -> throws (fail-closed, not distinguished from REFUSE)", () => {
   assert.throws(() => decideFromExit(42), /REFUSED/)
+})
+
+// ---------------------------------------------------------------------------
+// NEW subclass `GateRefused` (`.gleipnir/plans/tier3-approval-ux.md` Trace
+// section A, Stress-test S12(a)). `decideFromExit` must throw `GateRefused`
+// -- not a bare `Tier3GateAbort` -- on every non-zero exit, so staging can be
+// keyed strictly on `instanceof GateRefused` downstream. Its return-"allow"-
+// on-0 contract and `REFUSED` message text are UNCHANGED (the existing
+// `/REFUSED/` assertions above still pass because `GateRefused` is a
+// `Tier3GateAbort` subclass carrying the same message).
+// ---------------------------------------------------------------------------
+
+test("S12(a): decideFromExit(non-zero) throws an error that IS instanceof GateRefused, for every REFUSE code", () => {
+  for (const code of [1, 3, 42]) {
+    assert.throws(
+      () => decideFromExit(code),
+      (err) => {
+        assert.ok(
+          err instanceof GateRefused,
+          `code ${code}: the thrown error must be instanceof GateRefused`,
+        )
+        assert.match(err.message, /REFUSED/)
+        return true
+      },
+    )
+  }
+})
+
+test("S12(a): decideFromExit(0) is unaffected by the GateRefused change -- still returns \"allow\"", () => {
+  assert.equal(decideFromExit(0), "allow")
 })
 
 // ---------------------------------------------------------------------------
@@ -567,6 +623,255 @@ test("write with no filePath to classify: fails closed (does not silently pass t
   try {
     const hook = (await Tier3Gate({ directory: dir }))["tool.execute.before"]
     await assert.rejects(hook({ tool: "write" }, { args: { content: "x" } }))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// computeChangeHash / stagePendingContent / buildApprovalUrl -- pure unit
+// tests (`.gleipnir/plans/tier3-approval-ux.md` Assemble Step 4, Trace
+// section A, P1/P2/P8).
+// ---------------------------------------------------------------------------
+
+test("computeChangeHash: known UTF-8 sha256 vector (P2) -- matches an independent node:crypto computation", () => {
+  const content = "hello tier-3"
+  assert.equal(
+    computeChangeHash(content),
+    createHash("sha256").update(content, "utf8").digest("hex"),
+  )
+})
+
+test("computeChangeHash: multibyte content hashes the UTF-8 bytes, not code units (P2)", () => {
+  const content = "α<b>\n"
+  assert.equal(
+    computeChangeHash(content),
+    createHash("sha256").update(content, "utf8").digest("hex"),
+  )
+})
+
+test("stagePendingContent: writes pending-<hash>.json under .gleipnir/var/tmp with the {content, filePath, tool, staged_at} envelope (P1), filename keyed by the hash", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gleipnir-tier3-gate-stage-"))
+  try {
+    const content = "proposed tier-3 content\nsecond line"
+    const hash = stagePendingContent(dir, "write", TIER3_DECISION_FILE, content)
+    assert.equal(hash, computeChangeHash(content), "the returned hash must be sha256(content, utf8)")
+
+    const stagedPath = join(dir, ".gleipnir", "var", "tmp", `pending-${hash}.json`)
+    assert.ok(existsSync(stagedPath), "stagePendingContent must write pending-<hash>.json")
+
+    const envelope = JSON.parse(readFileSync(stagedPath, "utf8"))
+    assert.equal(envelope.content, content)
+    assert.equal(envelope.filePath, TIER3_DECISION_FILE)
+    assert.equal(envelope.tool, "write")
+    assert.equal(typeof envelope.staged_at, "number")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("stagePendingContent: is idempotent for identical content -- same hash, same filename, harmless overwrite (E4)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gleipnir-tier3-gate-stage-"))
+  try {
+    const content = "same content twice"
+    const hash1 = stagePendingContent(dir, "write", TIER3_AGENT_FILE, content)
+    const hash2 = stagePendingContent(dir, "write", TIER3_AGENT_FILE, content)
+    assert.equal(hash1, hash2)
+    assert.equal(stagedFilesIn(dir).length, 1)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("buildApprovalUrl: GLEIPNIR_APPROVAL_BASE_URL set -- full URL, one trailing slash stripped (P8)", () => {
+  const saved = process.env.GLEIPNIR_APPROVAL_BASE_URL
+  process.env.GLEIPNIR_APPROVAL_BASE_URL = "https://h.ts.net/"
+  try {
+    const hash = "a".repeat(64)
+    assert.equal(buildApprovalUrl(hash), `Approve at: https://h.ts.net/approve/${hash}`)
+  } finally {
+    if (saved === undefined) delete process.env.GLEIPNIR_APPROVAL_BASE_URL
+    else process.env.GLEIPNIR_APPROVAL_BASE_URL = saved
+  }
+})
+
+test("buildApprovalUrl: GLEIPNIR_APPROVAL_BASE_URL unset -- graceful relative-hint fallback (P8)", () => {
+  const saved = process.env.GLEIPNIR_APPROVAL_BASE_URL
+  delete process.env.GLEIPNIR_APPROVAL_BASE_URL
+  try {
+    const hash = "b".repeat(64)
+    assert.equal(
+      buildApprovalUrl(hash),
+      `Approve at: <your approval listener>/approve/${hash} (set GLEIPNIR_APPROVAL_BASE_URL to show the full URL here)`,
+    )
+  } finally {
+    if (saved === undefined) delete process.env.GLEIPNIR_APPROVAL_BASE_URL
+    else process.env.GLEIPNIR_APPROVAL_BASE_URL = saved
+  }
+})
+
+// ---------------------------------------------------------------------------
+// S12 -- staging is keyed STRICTLY on `instanceof GateRefused`, not on "any
+// Tier3GateAbort" (`.gleipnir/plans/tier3-approval-ux.md` Stress-test S12(b)-
+// (d), Trace "Wiring point", edge cases E1-E3). This is the mechanism-level
+// proof that closes the review's "outer catch treats all Tier3GateAbort the
+// same" gap: a genuine policy REFUSE stages a file; a broken prerequisite
+// (PreflightUnavailable) and an edit-tool-call refusal do NOT, even though
+// both are also Tier3GateAbort instances.
+// ---------------------------------------------------------------------------
+
+test("S12(b): a genuine policy REFUSE (stub CLI exits non-zero) stages pending-<hash>.json AND the thrown error is GateRefused carrying the approval URL", async () => {
+  const dir = makeRepoWithStub(1)
+  const proposedContent = "S12 refuse-path staged content\nwith a newline"
+  try {
+    await assert.rejects(
+      runBefore(dir, "write", TIER3_AGENT_FILE, { content: proposedContent }),
+      (err) => {
+        assert.ok(err instanceof GateRefused, "the thrown error must be instanceof GateRefused")
+        assert.match(err.message, /\/approve\//, "the message must contain the approval URL")
+        return true
+      },
+    )
+    const staged = stagedFilesIn(dir)
+    assert.equal(staged.length, 1, "exactly one staged file must appear for a genuine REFUSE")
+    const expectedHash = computeChangeHash(proposedContent)
+    assert.equal(staged[0], `pending-${expectedHash}.json`)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("S12(b-negative): a stub exiting 0 (ALLOW) stages NOTHING -- there is no error, so nothing to key staging off", async () => {
+  const dir = makeRepoWithStub(0)
+  try {
+    await runBefore(dir, "write", TIER3_AGENT_FILE, { content: "allowed content, never staged" }) // must not throw
+    assert.deepEqual(stagedFilesIn(dir), [], "an ALLOW must never stage a pending file")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("S12(c): PreflightUnavailable (missing interpreter) never stages -- it is a Tier3GateAbort but NOT a GateRefused", async () => {
+  const dir = makeRepoNoStub()
+  try {
+    await assert.rejects(
+      runBefore(dir, "write", TIER3_AGENT_FILE, { content: "would-be staged content" }),
+      (err) => {
+        assert.ok(err instanceof PreflightUnavailable, "must be PreflightUnavailable")
+        assert.ok(!(err instanceof GateRefused), "PreflightUnavailable must NOT be a GateRefused")
+        return true
+      },
+    )
+    assert.deepEqual(stagedFilesIn(dir), [], "no staged file for a broken prerequisite (E1)")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("S12(c'): PreflightUnavailable via a present-but-non-executable interpreter also never stages", async () => {
+  const dir = makeRepoNonExecStub()
+  try {
+    await assert.rejects(
+      runBefore(dir, "write", TIER3_DECISION_FILE, { content: "x" }),
+      (err) => {
+        assert.ok(err instanceof PreflightUnavailable)
+        assert.ok(!(err instanceof GateRefused))
+        return true
+      },
+    )
+    assert.deepEqual(stagedFilesIn(dir), [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("S12(d): an edit-tool-call refusal to a Tier-3 path never stages -- resultingContentFor's throw is a Tier3GateAbort but NOT a GateRefused", async () => {
+  const dir = makeRepoWithStub(0) // would ALLOW if ever invoked -- proves the CLI is never reached either
+  try {
+    await assert.rejects(
+      runBefore(dir, "edit", TIER3_AGENT_FILE, { oldString: "a", newString: "b" }),
+      (err) => {
+        assert.ok(!(err instanceof GateRefused), "an edit refusal must NOT be a GateRefused")
+        return true
+      },
+    )
+    assert.deepEqual(stagedFilesIn(dir), [], "no staged file for an edit refusal (E2)")
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("S12(d'): a write with no string content (E3) also never stages -- resultingContentFor's throw is NOT a GateRefused", async () => {
+  const dir = makeRepoWithStub(0)
+  try {
+    await assert.rejects(
+      runBefore(dir, "write", TIER3_AGENT_FILE, {}),
+      (err) => {
+        assert.ok(!(err instanceof GateRefused))
+        return true
+      },
+    )
+    assert.deepEqual(stagedFilesIn(dir), [])
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// S13 (TS half) -- cross-language JSON round-trip fidelity, multibyte/
+// astral (`.gleipnir/plans/tier3-approval-ux.md` Stress-test S13). Drives
+// the REAL `computeChangeHash`/`stagePendingContent` with the literal SAME
+// content string as the Python-side S13 test
+// (`tests/test_approval_server.py::TestCrossLanguageJSONRoundTripFidelity.X`)
+// -- keep these two literals in sync if either changes -- and asserts both
+// against an independently-computed `sha256(X, utf8)` via `node:crypto`,
+// which is the exact same canonical UTF-8 SHA-256 value
+// `hashlib.sha256(X.encode("utf-8")).hexdigest()` produces on the Python
+// side for the identical string (S1's byte-identity contract, applied here
+// through the REAL JSON.stringify -> disk -> (Python) json.loads envelope
+// round trip that S1/S8 bypass).
+// ---------------------------------------------------------------------------
+
+// Byte-for-byte the SAME literal as
+// tests/test_approval_server.py::TestCrossLanguageJSONRoundTripFidelity.X.
+const S13_MULTIBYTE_CONTENT = "emoji \u2705\u{1F510}\n multibyte \u03b1\u03b2\u03b3"
+
+test("S13 (TS half): computeChangeHash(X) matches an independent sha256(X, utf8) computation for multibyte/astral content", () => {
+  const expected = createHash("sha256").update(S13_MULTIBYTE_CONTENT, "utf8").digest("hex")
+  assert.equal(computeChangeHash(S13_MULTIBYTE_CONTENT), expected)
+})
+
+test("S13 (TS half): stagePendingContent writes a REAL pending-<hash>.json whose on-disk envelope round-trips the exact multibyte/astral string through JSON.stringify -> disk -> JSON.parse", () => {
+  const dir = mkdtempSync(join(tmpdir(), "gleipnir-tier3-gate-s13-"))
+  try {
+    const hash = stagePendingContent(dir, "write", TIER3_AGENT_FILE, S13_MULTIBYTE_CONTENT)
+    const expectedHash = createHash("sha256").update(S13_MULTIBYTE_CONTENT, "utf8").digest("hex")
+    assert.equal(hash, expectedHash, "the filename hash must equal the independent sha256(X, utf8)")
+
+    const stagedPath = join(dir, ".gleipnir", "var", "tmp", `pending-${hash}.json`)
+    assert.ok(
+      existsSync(stagedPath),
+      "stagePendingContent must write pending-<hash>.json under .gleipnir/var/tmp",
+    )
+
+    const raw = readFileSync(stagedPath, "utf8")
+    const envelope = JSON.parse(raw)
+    assert.equal(
+      envelope.content,
+      S13_MULTIBYTE_CONTENT,
+      "the envelope content must round-trip byte-for-byte through JSON.stringify -> disk -> JSON.parse",
+    )
+    assert.equal(envelope.filePath, TIER3_AGENT_FILE)
+    assert.equal(envelope.tool, "write")
+    assert.equal(typeof envelope.staged_at, "number")
+
+    // The identical re-hash a Python-side `read_bytes()` + `json.loads` +
+    // `envelope["content"].encode("utf-8")` + `compute_change_hash(...)`
+    // path would independently compute -- this is the exact envelope round
+    // trip S13 exercises (not S1's direct-string path, nor S8's in-memory
+    // Python-dict path).
+    const rehash = createHash("sha256").update(envelope.content, "utf8").digest("hex")
+    assert.equal(rehash, expectedHash)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

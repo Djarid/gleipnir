@@ -86,22 +86,55 @@ MCP_NAMESPACES = ["gleipnir-git_*", "gleipnir-pm_*"]
 HOLDER_MAP = {"gleipnir-git_*": "git-ops", "gleipnir-pm_*": "project-mgr"}
 MCP_SERVER_BASE_NAMES = ["gleipnir-git", "gleipnir-pm"]
 
+# The known-good roster this regression guard checks against, by design: an
+# explicit named set (not a bare count) so an unexpected addition/removal
+# still trips the guard even if the total happens to stay numerically the
+# same. Update this set deliberately whenever the roster genuinely changes
+# (last updated: roster grew from 8 to 10 with `session-scribe` and
+# `tier3-writer`).
+EXPECTED_AGENT_STEMS = frozenset(
+    {
+        "git-ops",
+        "gleipnir-brainstorm",
+        "gleipnir-code",
+        "gleipnir-plan",
+        "notify",
+        "orchestrator",
+        "project-mgr",
+        "quality-reviewer",
+        "session-scribe",
+        "tier3-writer",
+    }
+)
+
 
 # ---------------------------------------------------------------------------
-# ST-4: THE LIVE REGRESSION GUARD. Reads the REAL 9 `.gleipnir/agents/*.md`
+# ST-4: THE LIVE REGRESSION GUARD. Reads the REAL 10 `.gleipnir/agents/*.md`
 # files and the REAL `opencode.jsonc` off disk -- NOT fixture text -- and
 # runs them through the full pipeline. This is the assertion that the
 # ACTUAL current repo is clean.
 # ---------------------------------------------------------------------------
 
 class TestST4LiveRepoIsTheRegressionGuard:
-    def test_the_real_nine_agent_files_exist_on_disk(self):
+    def test_the_real_ten_agent_files_exist_on_disk(self):
         """Sanity precondition for everything below: fail loudly (not with
         a silently-empty 0-agent pass) if the roster directory shape ever
-        changes unexpectedly."""
+        changes unexpectedly -- checked against the EXPECTED_AGENT_STEMS
+        named set, not a bare count, so a swap (one agent added, a
+        different one removed) still trips this even though the count
+        would stay the same."""
         agent_paths = sorted(AGENTS_DIR.glob("*.md"))
-        assert len(agent_paths) == 9, (
-            f"expected the 9 known roster agent files under {AGENTS_DIR}, "
+        found_stems = {p.stem for p in agent_paths}
+        assert found_stems == EXPECTED_AGENT_STEMS, (
+            f"the on-disk roster under {AGENTS_DIR} no longer matches the "
+            f"known-good EXPECTED_AGENT_STEMS set.\n"
+            f"  found:    {sorted(found_stems)}\n"
+            f"  expected: {sorted(EXPECTED_AGENT_STEMS)}\n"
+            f"  missing:  {sorted(EXPECTED_AGENT_STEMS - found_stems)}\n"
+            f"  unexpected: {sorted(found_stems - EXPECTED_AGENT_STEMS)}"
+        )
+        assert len(agent_paths) == 10, (
+            f"expected the 10 known roster agent files under {AGENTS_DIR}, "
             f"found {len(agent_paths)}: {[p.name for p in agent_paths]}"
         )
 
@@ -156,7 +189,15 @@ class TestST4LiveRepoIsTheRegressionGuard:
             all_findings.extend(cs.check_grammar(parsed))
 
         assert unparseables == []
-        assert len(parsed_agents) == 9
+        assert set(parsed_agents.keys()) == EXPECTED_AGENT_STEMS, (
+            f"parsed agent stems no longer match the known-good roster.\n"
+            f"  found:    {sorted(parsed_agents.keys())}\n"
+            f"  expected: {sorted(EXPECTED_AGENT_STEMS)}"
+        )
+        assert len(parsed_agents) == 10, (
+            f"expected 10 parsed agents, found {len(parsed_agents)}: "
+            f"{sorted(parsed_agents.keys())}"
+        )
 
         effective = cs.enumerate_effective_tools(parsed_agents)
         all_findings.extend(cs.assert_single_holders(effective, MCP_NAMESPACES, HOLDER_MAP))
