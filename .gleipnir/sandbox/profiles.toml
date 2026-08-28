@@ -37,7 +37,7 @@ test_selector_prefix = true
 # resolved via `podman inspect ... --format '{{.Digest}}'`.
 [profile.node]
 image = "localhost/gleipnir-sandbox-node@sha256:5e2e0acaaa4cfc5cea4c44a09f50b94e07f71c499eeed5a7e56090c28baa3409"
-test = ["node", "--experimental-strip-types", "--test", "tests/test_sequence_gate.mjs", "tests/test_git_guard.mjs"]
+test = ["node", "--experimental-strip-types", "--test", "tests/test_sequence_gate.mjs", "tests/test_git_guard.mjs", "tests/test_tier3_gate.mjs"]
 lint = ["node", "--experimental-strip-types", "--check", "tests/test_sequence_gate.mjs"]
 # D5 honest degradation: node built-in coverage (node --experimental-test-coverage)
 # deferred; this slice proves the zero-dep .mjs cross-language seam only.
