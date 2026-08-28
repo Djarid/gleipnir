@@ -25,6 +25,7 @@ color: "#f5a623"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # quality-reviewer (reference floor: read-only)

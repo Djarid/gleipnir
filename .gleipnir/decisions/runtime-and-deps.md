@@ -81,10 +81,17 @@ open-ended `>=1.0.0`.
 block; `os.environ` suffices. No `.env` loader needed.
 
 **Boundary drawn sharply.** "Enforcement core = stdlib-only" is unchanged. Only
-`src/gleipnir/broker/**` may import the MCP SDK; every future dep still needs its
-own recorded justification. A broker-scoped conformance test
-(`tests/test_broker_stdlib_only.py`) asserts `mcp` never leaks into the core and,
-within `broker/`, is imported only by the `mcp_server.py` modules.
+`src/gleipnir/broker/**` and the single named file
+`src/gleipnir/approval/mcp_server.py` may import the MCP SDK; every future dep
+still needs its own recorded justification. The `approval/mcp_server.py`
+exception is the opencode-spawned approval-listener MCP wrapper
+(`../plans/tier3-mcp-approval-launcher.md`, Decision 8 / O-2 — the same
+broker-precedent carve-out); it is a **single named file**, NOT a blanket
+widening of the whole approval package (`token.py`/`gate.py`/`verify/marker.py`
+stay `mcp`-free). A broker-scoped conformance test
+(`tests/test_broker_stdlib_only.py`) asserts `mcp` never leaks into the core
+except that one named file and, within `broker/`, is imported only by the
+`mcp_server.py` modules.
 
 ## Accrued-tooling reconciliation (this session)
 

@@ -46,6 +46,7 @@ color: primary
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # Orchestrator (G-5 stand-in)

@@ -171,4 +171,45 @@ boundary target), so the token cannot be forged without it.
 - Tier-2 / G-4c (lessons/memory) generalization of the signed-approval gate —
   out of scope now; the seam is designed so it is additive, not a redesign.
 - Operator OS acts: `tailscale serve` config + key-permission confirmation.
+
+## Supersession: launch mechanism (Decision 15 of the plan) — MCP-supervised
+
+**Superseded by `../plans/tier3-mcp-approval-launcher.md` (this session).**
+`../plans/tier3-signed-approval.md` **Decision 15** ("No auto-start… a
+long-running process the operator starts manually… never launched by any
+agent") is **narrowed**: the approval listener may now be started as a
+**supervised subprocess spawned by opencode's `gleipnir-approval` local MCP**
+(`gleipnir.approval.mcp_server`), OR by the manual `bin/gleipnir-approval-server`
+shim (kept as a documented fallback). The MCP also exposes one agent-facing
+tool, `request_approval`, holder-scoped to **`tier3-writer` only** (all 9 other
+roster agents carry a `"gleipnir-approval_*": false` deny).
+
+**Why the original "never launched by any agent" framing was miscalibrated.**
+The security locus was never *who launches the process* — it is *who can read
+the signing key and mint a token*. Launching the listener confers
+process-supervision only; it does not grant the launcher the HMAC key or the
+ability to mint. Identity is still resolved out-of-band via `tailscale whois`
+against a **separate authenticated tailnet peer** at request time, and the
+`request_approval` tool only **stages** a pending change + returns the
+`/approve/<hash>` URL — it never mints (structurally enforced by the reverse-
+import scan `test_approval_mcp_server.py::…T11`: `mcp_server.py` may not import
+or call `capture_approval`/`mint_approval`/`load_key`). The key reaches the MCP
+subprocess via `.envrc`/direnv → opencode inherited env → `{env:...}` reference
+in `opencode.jsonc` (never a literal in tracked config); the agent tool surface
+never sees the key bytes.
+
+**Honest residual gap (carried forward, deliberately deferred — NOT closed by
+this change).** The isolation this rests on is, today:
+
+> isolation-by-convention, not isolation-by-capability, until the global
+> `.envrc`/`.env*` deny is built (deferred, not in this plan's scope) — a roster
+> agent with sufficient bash/read capability could in principle attempt to read
+> the key's source, and only the current deny-by-default bash allowlists (not a
+> dedicated `.envrc` read-deny) stand between an agent and that file today.
+
+This becomes structural (not cooperative-policy) only when the global
+`.envrc`/`.env*` roster-wide read-deny lands and, ultimately, under the S-2
+mount + terminal closure named above. The `.envrc` key source is an **interim
+choice**; a secret store (HashiCorp Vault / 1Password / similar) is the named
+early-hardening candidate.
 - The full opencode restart that makes the hook + role live.

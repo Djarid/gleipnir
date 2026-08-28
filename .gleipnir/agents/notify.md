@@ -19,6 +19,7 @@ color: "#50e3c2"
 tools:
   "gleipnir-git_*": false
   "gleipnir-pm_*": false
+  "gleipnir-approval_*": false
 ---
 
 # notify (single-namespace)
