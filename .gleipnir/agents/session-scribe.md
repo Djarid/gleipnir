@@ -11,11 +11,13 @@ description: >-
   Tier-3 (agents/ skills/ goals/ decisions/ stage-role-map.md keys/ plugins/
   sandbox/ AGENTS.md) path. Mechanical role — cheap model. Not a G-5 pipeline stage.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-haiku-4-5
+model: aperture-openai-compatible/anthropic/claude-haiku-4.5
 temperature: 0
 steps: 15
 permission:
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
   webfetch: deny
   task: deny
   bash: deny
@@ -30,11 +32,13 @@ permission:
     # here, satisfying the pipeline's human-review step. See
     # .gleipnir/plans/lesson-escalation-process.md.
     ".gleipnir/lessons/session-lessons-candidates.md": allow
+    ".env*": deny
   write:
     "*": deny
     ".gleipnir/plans/**": allow
     ".gleipnir/var/tmp/**": allow
     ".gleipnir/lessons/session-lessons-candidates.md": allow
+    ".env*": deny
 color: "#4a90d9"
 # Broker single-holder: bookkeeping scribe holds neither broker namespace
 # (top-level tools, boolean false = deny).

@@ -16,11 +16,13 @@ description: >-
   Every write carries a verbatim quote of the operator's converged answer + a
   provenance footer. Mechanical role — cheap model. Not a G-5 pipeline stage.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-haiku-4-5
+model: aperture-openai-compatible/anthropic/claude-haiku-4.5
 temperature: 0
 steps: 15
 permission:
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
   webfetch: deny
   # question is DENIED by capability, not by instruction: a subagent's question
   # cannot reach the operator, so allowing it only invites a fake self-converge
@@ -49,6 +51,7 @@ permission:
     ".gleipnir/decisions/**": allow
     ".gleipnir/keys/**": allow
     ".gleipnir/stage-role-map.md": allow
+    ".env*": deny
   write:
     "*": deny
     ".gleipnir/agents/**": allow
@@ -57,6 +60,7 @@ permission:
     ".gleipnir/decisions/**": allow
     ".gleipnir/keys/**": allow
     ".gleipnir/stage-role-map.md": allow
+    ".env*": deny
 color: "#d0021b"
 # Broker single-holder: the Tier-3 executor holds NEITHER broker namespace
 # (top-level tools, boolean false = deny). It cannot commit, push, or call the

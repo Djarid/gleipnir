@@ -7,17 +7,20 @@ description: >-
   and never DECIDES material design tradeoffs itself (those converge on the
   operator at the brainstorm gate). Premium model for unbounded planning judgment.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-opus-4-8
+model: aperture-openai-compatible/claude-opus-5
 temperature: 0.4
 steps: 25
 permission:
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
   webfetch: allow
   task: deny
   bash: deny
   edit:
     "*": deny
     ".gleipnir/plans/**": allow
+    ".env*": deny
 color: "#c586ff"
 # Broker single-holder: holds neither broker namespace (top-level tools, boolean).
 tools:

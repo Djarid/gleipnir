@@ -4,7 +4,7 @@ description: >-
   correctness against the plan, and spec conformance. Writes nothing, runs no
   git beyond read-only inspection. Reference-floor role from spec S-1.3.1.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-sonnet-5
+model: aperture-openai-compatible/openai/gpt-6-astra
 temperature: 0.1
 steps: 20
 permission:
@@ -12,7 +12,9 @@ permission:
   write: deny
   task: deny
   webfetch: deny
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
   bash:
     "*": deny
     "git diff*": allow
