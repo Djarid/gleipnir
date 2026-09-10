@@ -5,7 +5,7 @@ description: >-
   S-1.3.1 (T-4 PM). Handles issue create/update/comment/close and PR/MR
   create/update/comment/merge/close.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-haiku-4-5
+model: aperture-openai-compatible/anthropic/claude-haiku-4.5
 temperature: 0
 steps: 15
 permission:
@@ -14,7 +14,9 @@ permission:
   bash: deny
   task: deny
   webfetch: deny
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
 color: "#bd10e0"
 # The PM namespace (AETOS deny-list pattern): project-mgr KEEPS the
 # gleipnir-pm_* tools (issue_create/update/comment/close) and DENIES the git

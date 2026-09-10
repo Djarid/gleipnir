@@ -4,7 +4,7 @@ description: >-
   tool surface, all else denied. Reference-floor role from spec S-1.3.1 (T-5).
   Reaches a human promptly for escalation and the human-correction loop.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-haiku-4-5
+model: aperture-openai-compatible/anthropic/claude-haiku-4.5
 temperature: 0
 steps: 10
 permission:
@@ -13,7 +13,9 @@ permission:
   bash: deny
   task: deny
   webfetch: deny
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
 color: "#50e3c2"
 # Broker single-holder: holds neither broker namespace (top-level tools, boolean).
 tools:

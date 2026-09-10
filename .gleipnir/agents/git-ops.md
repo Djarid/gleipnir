@@ -5,7 +5,7 @@ description: >-
   bash with a git-subcommand allowlist; denies read on .git/** to protect the
   token. Broker single-holder per spec S-1.3.1 / G-2.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-haiku-4-5
+model: aperture-openai-compatible/anthropic/claude-haiku-4.5
 temperature: 0
 # 30 (raised from 15): single-verb git tasks fit in 15, but multi-step staging
 # and commit-refusal diagnostics do not — a 15-cap hit mid-`git add -p` during a
@@ -20,6 +20,7 @@ permission:
   read:
     "*": allow
     ".git/**": deny
+    ".env*": deny
   # Commit + push move to the gleipnir-git broker (structural E-1 argument
   # policy: force-push ABSENT from the tool surface, and _run_git refuses
   # hook-bypass flags). The bash allowlist is NARROWED, not deleted: the

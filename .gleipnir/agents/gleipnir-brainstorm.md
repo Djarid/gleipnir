@@ -7,11 +7,13 @@ description: >-
   design brief only; never code, tests, git, or spec. Runs ahead of
   gleipnir-plan.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-opus-4-8
+model: aperture-openai-compatible/claude-opus-5
 temperature: 0.5
 steps: 25
 permission:
-  read: allow
+  read:
+    "*": allow
+    ".env*": deny
   webfetch: allow
   # question is DENIED by capability, not by instruction: a subagent's question
   # cannot reach the operator, so allowing it only invites a fake self-converge.
@@ -23,6 +25,7 @@ permission:
   edit:
     "*": deny
     ".gleipnir/plans/**": allow
+    ".env*": deny
 color: "#ffb454"
 # Broker single-holder: holds neither broker namespace (top-level tools, boolean).
 tools:

@@ -213,3 +213,58 @@ mount + terminal closure named above. The `.envrc` key source is an **interim
 choice**; a secret store (HashiCorp Vault / 1Password / similar) is the named
 early-hardening candidate.
 - The full opencode restart that makes the hook + role live.
+
+## Narrowing: the `.env*` roster-wide permission deny (this session)
+
+**Closes part of the O-3(b) residual named above — narrowed, not eliminated.**
+Every roster agent's frontmatter now denies `permission.read`/`edit`/`write` for
+the `.env*` glob (`.gleipnir/plans/envrc-roster-deny-brainstorm.md`, CONVERGED;
+`.gleipnir/plans/envrc-roster-deny-plan.md`, spec-review PASS). This is a
+genuine, real narrowing of the previously-named gap: before this change, only
+deny-by-default bash allowlists stood between an agent and `.envrc`; now
+opencode's own permission layer additionally refuses any `read`/`edit`/`write`
+tool call an agent makes against a `.env*`-matching path.
+
+**The required quote this amendment carries forward, verbatim, from
+`.gleipnir/plans/envrc-roster-deny-plan.md:481-494`:**
+
+> **O-3(b) — narrowed (not closed).** The roster-wide `.env*` `read`+`edit` deny
+> now lands as an **opencode-permission-layer** control: opencode refuses every
+> roster agent's `read`/`edit` tool call for a `.env*` path, in both caged and
+> uncaged postures. This is **explicitly NOT** file-permission (chmod/chown)
+> enforced and **explicitly NOT** OS-exclusive: the `gleipnir-approval` signer
+> MCP subprocess and every agent's tool-invocation processes run under **one
+> shared OS uid** today, so no OS-level control separates "signer" from "agent."
+> The deny closes only the opencode-tool-dispatch path; it does nothing against a
+> future `bash`/`exec` capability, a compromised MCP, a compromised opencode, or
+> any OS-level access path. Genuine OS-level isolation is the **deferred
+> signer-uid-separation follow-on** (dedicated service account + `chown` +
+> uid-switched MCP launch, e.g. `sudo -u signer …`) — the same shape as the S-2
+> dedicated-agent-uid machinery, inverted — plus the S-2 mount. O-3(b) is
+> therefore **narrowed to "opencode-permission-layer enforced," NOT resolved.**
+
+**This record therefore states plainly: the O-3(b) gap is narrowed to
+"opencode-permission-layer enforced," explicitly NOT "file-permission
+enforced" and explicitly NOT "operator has exclusive OS control of the key."**
+Verified live (not merely asserted) via required runtime probes against the
+already-gitignored `.envrc` — the recorded outcome of those probes is the
+attestation evidence for the two agents whose maps carry a `"*": allow`
+(`gleipnir-code`'s edit map, `git-ops`'s read map), per
+`envrc-roster-deny-plan.md`'s two-tier attestation. **`gleipnir-code`'s
+read/edit/write probes are empirically CLOSED (real permission-denial
+responses, not content-mismatch failures); `git-ops`'s read-map probe is
+tracked separately and must be closed before this attestation's row (b) is
+complete — structural analogy to `gleipnir-code`'s result is not accepted as a
+substitute per the plan's own per-target runtime-evidence requirement.**
+
+**Deferred, named follow-on (distinct from this change, NOT folded in):**
+genuine OS-level secret isolation would require the **signer to run under a
+distinct uid from the agent's tool-invocation processes** — a dedicated
+service account + `chown` + a uid-switched MCP launch (e.g.
+`sudo -u signer …`), the same shape as this framework's S-2 dedicated-agent-uid
+machinery, just **inverted** (protecting the signer *from* the agent's uid,
+rather than restricting the agent's uid away from enforcement paths). Also
+still deferred, unchanged: the `boundary.py`/OS-layer `ENFORCEMENT_PATHS`
+addition (bites only in caged mode; `.envrc` sits outside `config_root`'s
+`.gleipnir/`-relative invariant) and the `.gitignore` `.env*` widening
+(a version-control-tracking concern, a separate follow-on).

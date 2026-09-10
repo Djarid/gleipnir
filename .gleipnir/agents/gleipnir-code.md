@@ -5,7 +5,7 @@ description: >-
   with an explicit build/test/lint allowlist, so dangerous verbs are absent
   by capability, not caught by pattern. Holds no git and no credentials.
 mode: subagent
-model: aperture-anthropic/anthropic.claude-sonnet-5
+model: aperture-openai-compatible/claude-sonnet-5
 temperature: 0.1
 steps: 30
 permission:
@@ -25,7 +25,10 @@ permission:
     "src/gleipnir/preflight/fetch_attestation.py": allow
     "src/gleipnir/preflight/__main__.py": allow
     ".gleipnir/plugins/advance-hook.ts": allow
-  read: allow
+    ".env*": deny
+  read:
+    "*": allow
+    ".env*": deny
   task: deny
   webfetch: deny
   bash:

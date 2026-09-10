@@ -8,7 +8,7 @@ mode: primary
 # unset = no cap = model default (.gleipnir/policy/context-cap.jsonc). No capped
 # alias / provider block is in play. To re-apply a cap later, re-add a capped
 # alias in opencode.jsonc and repoint this `model:` per that file's mechanism.
-model: aperture-anthropic/anthropic.claude-sonnet-5
+model: aperture-openai-compatible/claude-sonnet-5
 temperature: 0.2
 steps: 40
 # Pinned rules re-injected verbatim after every context compaction by
@@ -27,6 +27,9 @@ compaction_survival:
   - "When you notice a process/reliability observation worth a durable lesson, PROPOSE it via `question` immediately (or coalesced with others noticed in the SAME turn) — do not just mention it in passing and move on. A noticed-but-unproposed lesson is a planning failure, not a completed observation. Never hold a candidate pending across a turn or compaction; one confirmed lesson = one session-scribe append, verified against disk."
 permission:
   edit: deny
+  read:
+    "*": allow
+    ".env*": deny
   bash: deny
   webfetch: deny
   question: allow
