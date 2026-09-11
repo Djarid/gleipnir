@@ -52,21 +52,32 @@ a deliberately-constructed dynamic reference (string concatenation,
 `getattr` with a computed name) would evade it; accepted because the threat
 model here is implementer drift, not a malicious wrapper author.
 
-**Port-conflict / fail-closed-key handling (Decision 19, edge cases 1 + 5):**
-the daemon thread's target function (`_run_listener`) wraps
-`register_default_resolvers()` + `run_server(...)` in a broad
-try/except and LOGS-AND-CONTINUES on any failure -- a bind conflict on
-`127.0.0.1:8765` (edge case 5) or a fail-closed `KeyUnavailable` when no
-usable key is configured (edge case 1). Either way the thread exits quietly
-but the MCP process (and its `request_approval` stdio tool surface) keeps
-running: a second listener already running, or a not-yet-configured key, is
-not a reason to kill the agent-facing tool surface.
+**Port-conflict / fail-closed-key handling (Decision 19 as corrected by
+`.gleipnir/plans/approval-listener-fail-loud.md`):** the daemon thread's
+target function (`_run_listener`) wraps `register_default_resolvers()` +
+`run_server(...)` in a try/except that CLASSIFIES the failure rather than
+swallowing every failure alike. The **only** benign case is a bind conflict
+on `127.0.0.1:8765` -- an `OSError` whose `errno` is exactly
+`errno.EADDRINUSE` (edge case E-3): that is logged at WARNING and the thread
+exits quietly, because a second listener already running is the operator's
+own doing, not a failure. **Every other failure is fatal** -- including a
+fail-closed `KeyUnavailable` when no usable key is configured, any other
+`OSError` (`EACCES`, `EADDRNOTAVAIL`, `EMFILE`/`ENFILE`, or `errno is None`),
+and any non-`OSError` fault from `register_default_resolvers()`: it is
+logged at ERROR and recorded in the module-level listener state, so
+`request_approval` refuses loudly (raising `ApprovalListenerUnavailable`,
+before staging anything) instead of returning a URL that nothing can serve.
+Either way the listener thread exits without propagating into (and
+crashing) the MCP process's stdio `request_approval` tool surface -- only
+the *classification* of "does this failure make a returned URL meaningless?"
+changed, not the "never crash the process" shape.
 
 Run as: ``python -m gleipnir.approval.mcp_server``
 """
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -102,6 +113,49 @@ mcp = FastMCP(
 # time -- read here at call time too, so tests can toggle it per-case and
 # so approval readiness never depends on it being set (edge case 2).
 _APPROVAL_BASE_URL_ENV = "GLEIPNIR_APPROVAL_BASE_URL"
+
+
+class ApprovalListenerUnavailable(RuntimeError):
+    """Raised by `request_approval` when the in-process listener has
+    recorded a fatal failure (plan `.gleipnir/plans/approval-listener-fail-
+    loud.md`, Decision 4): the returned message names the underlying cause
+    verbatim, so this MCP's tool surface never hands out a `/approve/<hash>`
+    URL that nothing is listening to.
+    """
+
+
+# Listener-state holder (Decision 8 / plan Trace step 2): a single
+# `Optional[str]` "refusal reason" guarded by a lock, because the listener
+# thread WRITES it and the MCP main thread (inside `request_approval`) READS
+# it -- the lock is load-bearing, not decorative. `None` means "no fatal
+# failure has been recorded" (the initial, and the reset, state).
+_listener_state_lock = threading.Lock()
+_listener_refusal_reason: Optional[str] = None
+
+
+def mark_unavailable(reason: str) -> None:
+    """Record a fatal listener failure. Called ONLY from `_run_listener`'s
+    fatal branch."""
+    global _listener_refusal_reason
+    with _listener_state_lock:
+        _listener_refusal_reason = reason
+
+
+def refusal_reason() -> Optional[str]:
+    """The currently-recorded fatal reason, or `None` if the listener has
+    not (yet, or ever) recorded one. Called from `request_approval` as its
+    first statement."""
+    with _listener_state_lock:
+        return _listener_refusal_reason
+
+
+def reset() -> None:
+    """Test-isolation seam (Decision 8) -- clears any recorded refusal
+    reason, the same "injectable seam only" convention as `token_dir=`
+    above. Production code never calls this; only tests do."""
+    global _listener_refusal_reason
+    with _listener_state_lock:
+        _listener_refusal_reason = None
 
 
 def _build_approval_url(change_hash: str) -> str:
@@ -166,6 +220,17 @@ def request_approval(content: str, file_path: str = "", tool: str = "") -> str:
     **not** open a browser on this host. The operator opens the returned
     URL on a separate authenticated tailnet device to review and approve.
 
+    **Fails loudly instead of staging** (plan `.gleipnir/plans/approval-
+    listener-fail-loud.md`, Decision 4/5) when the in-process listener has
+    recorded a fatal failure: raises `ApprovalListenerUnavailable` as the
+    FIRST statement, before any staging, naming the captured cause verbatim.
+    Scoped precisely (Decision 13): this refusal means only that *this
+    process's* `request_approval` tool will not mint or make available a
+    review URL via its own in-process listener -- it is not a claim that no
+    approval can be minted at all. A separately run, healthy manual
+    listener (`bin/gleipnir-approval-server`) at another uid is unaffected
+    and may still be serving.
+
     Args:
         content: the exact pending Tier-3 change content to stage -- the
             bytes that will be hashed and, on operator approval, minted.
@@ -173,7 +238,25 @@ def request_approval(content: str, file_path: str = "", tool: str = "") -> str:
             context on the review page; never hashed/minted).
         tool: the name of the tool/action that produced this content
             (display-only context on the review page).
+
+    Raises:
+        ApprovalListenerUnavailable: the in-process listener has recorded a
+            fatal failure (anything other than a benign `EADDRINUSE` port
+            conflict) -- nothing is staged.
     """
+    reason = refusal_reason()
+    if reason is not None:
+        raise ApprovalListenerUnavailable(
+            "gleipnir-approval's in-process listener is unavailable, so "
+            "this MCP's request_approval tool cannot mint or make "
+            f"available a review URL via that listener: {reason} -- this "
+            "process's request_approval tool will keep refusing for the "
+            "life of this process; it does NOT mean no approval can be "
+            "minted at all -- a separately run, healthy manual listener "
+            "(bin/gleipnir-approval-server) at another uid is unaffected "
+            "and may still be serving; if so, use its URL instead, or fix "
+            "and restart this process's in-process listener."
+        )
     change_hash = _stage_pending_content(content, file_path, tool)
     return _build_approval_url(change_hash)
 
@@ -189,11 +272,22 @@ def _run_listener(
     then starts the existing `server.py` listener, UNCHANGED, on this
     thread. `serve_forever()` blocks here for the life of the thread.
 
-    Decision 19 (log-and-continue): ANY failure -- a bind conflict on the
-    listener port (edge case 5) or a fail-closed `KeyUnavailable` when no
-    usable key is configured (edge case 1) -- is logged and this function
-    simply returns, so the thread exits WITHOUT ever propagating into (and
-    crashing) the MCP process's stdio `request_approval` tool surface.
+    Failure classification (Decision 2, plan `.gleipnir/plans/approval-
+    listener-fail-loud.md`): the **only** benign failure is an `OSError`
+    whose `errno` is exactly `errno.EADDRINUSE` (edge case E-3, Decision
+    19's named case -- a second listener already bound is the operator's
+    own doing, not a security regression) -- that is logged at WARNING and
+    the state is left untouched, so `request_approval` keeps working
+    exactly as before. **Every other failure is fatal** -- any other
+    `OSError` (`EACCES`, `EADDRNOTAVAIL`, `EMFILE`/`ENFILE`, or `errno is
+    None`, edge case E-3b), a fail-closed `KeyUnavailable` when no usable
+    key is configured (edge case E-1/E-2), or any other exception from
+    `register_default_resolvers()` (edge case E-7) -- logged at ERROR and
+    recorded via `mark_unavailable()`, so `request_approval` refuses loudly
+    instead of returning a dead URL. Either way this function returns
+    without raising, so the thread exits WITHOUT ever propagating into (and
+    crashing) the MCP process's stdio `request_approval` tool surface --
+    only the classification changed, not the never-crash shape.
     """
 
     kwargs = {}
@@ -204,12 +298,20 @@ def _run_listener(
     try:
         register_default_resolvers()
         run_server(key_file=key_file, token_dir=token_dir, **kwargs)
-    except Exception as exc:  # noqa: BLE001 -- Decision 19: log-and-continue
-        logger.warning(
-            "gleipnir-approval listener thread exiting without a bound "
-            "listener (tool surface remains up): %s",
+    except Exception as exc:  # noqa: BLE001 -- classified below, not swallowed
+        if isinstance(exc, OSError) and exc.errno == errno.EADDRINUSE:
+            logger.warning(
+                "gleipnir-approval listener thread exiting without a bound "
+                "listener (tool surface remains up): %s",
+                exc,
+            )
+            return
+        logger.error(
+            "gleipnir-approval listener thread exiting fatally -- "
+            "request_approval will refuse until this is fixed: %s",
             exc,
         )
+        mark_unavailable(str(exc))
 
 
 def start_listener_thread(
