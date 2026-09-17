@@ -34,9 +34,19 @@ else
 fi
 
 # --- ansible-lint (AC-lint) ------------------------------------------------
+# ansible-lint resolves `exclude_paths` RELATIVE TO THE INVOCATION CWD, not the
+# config-file's directory (verified; see
+# ../../.gleipnir/decisions/ansible-lint-exclude-paths-cwd-relative.md). The
+# config's exclusion is `ansible/tests/fixtures/broken/` (repo-root-relative),
+# so this check MUST run from the repo root regardless of where run.sh was
+# invoked from (the documented invocation is `cd ansible/tests && ./run.sh`,
+# whose cwd is NOT the repo root). We therefore cd to the repo root and pass
+# repo-root-relative paths, making the exclusion resolve deterministically for
+# BOTH the repo-root and the documented tests-dir invocations.
 if command -v ansible-lint >/dev/null 2>&1; then
     echo "-- ansible-lint"
-    if ansible-lint "$root"; then
+    repo_root=$(cd "$root/.." && pwd)
+    if ( cd "$repo_root" && ansible-lint --config-file ansible/.ansible-lint ansible ); then
         echo "PASS: ansible-lint"
     else
         echo "FAIL: ansible-lint" >&2
@@ -72,7 +82,7 @@ fi
 
 # --- AC-nolit: no literal 510 (or bare numeric uid/gid) anywhere ----------
 echo "-- AC-nolit: no literal 510 in site.yml / group_vars/all.yml"
-if grep -nE '\b510\b' "$root/site.yml" "$root/group_vars/all.yml"; then
+if grep -nE '\b510\b' "$root/site.yml" "$root/group_vars/all.yml" "$root/tasks/create-service-account.yml"; then
     echo "FAIL: literal 510 found (see above) -- uid/gid must come from agent-identity.env (P3)" >&2
     fail=1
 else

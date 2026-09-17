@@ -1,0 +1,406 @@
+---
+# ansible/signer-teardown.yml
+#
+# Production teardown for the signer service-account + scratch-root spike
+# (see ../.gleipnir/plans/signer-uid-separation-plan-a-launchd-spike.md).
+# Reverses everything ansible/signer.yml provisioned, gated on the
+# provisioning manifest (created.env) signer.yml wrote at the end of its
+# run -- never guesses (J9): every removal below is individually gated on
+# the specific *_CREATED=true flag that corresponds to the object it
+# removes, so a partial/failed signer.yml run never causes teardown to
+# reach for things that were never made.
+#
+# THREE-STATE entry logic (J21), not a flat "manifest absent -> refuse":
+#   (1) created.env PRESENT       -> perform the gated removal IN ORDER:
+#       unload both jobs first (arm-A then arm-B, each guarded by a
+#       load-check so a not-loaded label is skipped cleanly, never
+#       hangs), then remove both plists -- using the PLIST_A_PATH /
+#       PLIST_B_PATH recorded in the manifest, never a home-relative
+#       guess, which would resolve under ROOT's home under sudo -- then
+#       remove the account, then the group, then the scratch root, each
+#       step gated on its own *_CREATED flag (J22). Before the receipt is
+#       written, every removed object is re-checked absent; if anything
+#       that should be gone is still present, the run fails loudly
+#       instead of writing a receipt that lies (J9). Only then is the
+#       completion receipt /private/tmp/gleipnir-signer-spike.torndown
+#       written, as the FINAL task (UTC timestamp + removed-object names
+#       + the consumed created.env, copied verbatim).
+#   (2) created.env ABSENT, receipt PRESENT -> a VERIFIED clean no-op:
+#       quote the receipt as positive evidence the box is already clean,
+#       remove nothing, exit 0. Never inferred from absence alone.
+#   (3) created.env ABSENT AND receipt ABSENT -> REFUSE LOUDLY (J9) and
+#       remove nothing -- an unknown state is never treated as "clean".
+#
+# The receipt lives OUTSIDE {{ spike_root }} (J21): created.env is inside
+# the scratch root, and state (1) removes the root entire, so a second run
+# needs the receipt to tell "already clean" from "unknown" -- keeping the
+# manifest as the only record would destroy it with the very run that
+# needs it read back.
+#
+# J10: .gleipnir/signer-identity.env is NEVER touched here -- it is a
+# record of a chosen free uid/gid for Plan B reuse, not a created OS
+# object, and survives teardown by design. No task in this file
+# references it.
+
+- name: signer service-account + scratch-root spike teardown
+  hosts: local
+  connection: local
+  gather_facts: false
+
+  vars:
+    spike_root: /private/tmp/gleipnir-signer-spike
+    signer_account_name: gleipnirsigner
+
+  pre_tasks:
+    # --- E-5: resolve the real operator, not root (mirrors site.yml:53-63) -
+    # A REAL run under `sudo ansible-playbook` wedged indefinitely because
+    # the arm-A bootout task below used `ansible_user_uid | default(0)`:
+    # under sudo the WHOLE process is root, `ansible_user_uid` is either
+    # unset (this play has `gather_facts: false`, so it is never gathered
+    # at all) or would resolve to root's uid if it were -- both paths land
+    # on the `default(0)` fallback, producing `gui/0`, the ROOT gui domain,
+    # which does not exist and hangs `launchctl` holding a system lock.
+    # `sudo` sets $SUDO_USER for the process it launches; prefer that, and
+    # fall back to the current invocation user's login name ($USER) when
+    # not sudo-invoked (e.g. the unprivileged fixture tests in
+    # ansible/tests/, which never use sudo). Unlike site.yml this play
+    # cannot fall back to a gathered `ansible_user_id` fact (`gather_facts:
+    # false` above), so the env-var fallback chain stops at $USER.
+    - name: "pre: resolve the invoking operator (not root) for the launchd gui domain (E-5)"
+      ansible.builtin.set_fact:
+        teardown_operator: "{{ lookup('ansible.builtin.env', 'SUDO_USER') | default(lookup('ansible.builtin.env', 'USER'), true) }}"
+
+    # Both env vars can be unset in a stripped-down invocation environment.
+    # If that happened, falling through to a bare `id -u` (no username arg)
+    # would resolve the CURRENT process's own uid -- root, under sudo -- and
+    # silently reintroduce the exact gui/0 hang this fix exists to prevent.
+    # Fail loudly instead of guessing (J9-style posture, mirrored from the
+    # manifest/receipt discriminator above).
+    - name: "pre: fail fast if the operator could not be resolved from the environment (E-5)"
+      ansible.builtin.fail:
+        msg: >-
+          Could not resolve the invoking operator: both $SUDO_USER and $USER
+          are unset/empty. Refusing to fall through to a bare `id -u` (which
+          would resolve root's uid under sudo and reintroduce the gui/0
+          launchctl hang this fix exists to prevent). Re-run with $SUDO_USER
+          or $USER set, or invoke via `sudo ansible-playbook ...` as usual.
+      when: (teardown_operator | default('') | trim | length) == 0
+
+    - name: "pre: resolve the operator's numeric uid via id -u (E-5, S1: no bare uid/gid literal)"
+      ansible.builtin.command: "id -u {{ teardown_operator }}"
+      register: teardown_operator_uid_cmd
+      changed_when: false
+      timeout: 10
+
+    - name: "pre: set operator_uid fact from the registered id -u output (E-5)"
+      ansible.builtin.set_fact:
+        operator_uid: "{{ teardown_operator_uid_cmd.stdout | trim }}"
+
+    - name: "pre: resolve the operator's real home dir (for the arm-A LaunchAgent plist path; never root's ~ under sudo)"
+      ansible.builtin.command: "dscl . -read /Users/{{ teardown_operator }} NFSHomeDirectory"
+      register: teardown_operator_home_cmd
+      changed_when: false
+      failed_when: false
+      timeout: 10
+
+    - name: "pre: set operator_home fact from the registered dscl output"
+      ansible.builtin.set_fact:
+        operator_home: >-
+          {{ (teardown_operator_home_cmd.stdout
+              | regex_search('NFSHomeDirectory: (.+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+
+    # Defense in depth: even if the operator resolved to SOMETHING, confirm
+    # the resulting uid is not 0 before it is ever used to build a
+    # `gui/<uid>` domain -- the invariant this entire fix exists to
+    # guarantee, asserted explicitly rather than only implied by the steps
+    # above.
+    - name: "pre: fail fast if the resolved operator uid is root (0) -- never target gui/0 (E-5)"
+      ansible.builtin.fail:
+        msg: >-
+          Resolved operator_uid=0 (root) for '{{ teardown_operator }}'. This
+          would target gui/0, the root gui domain that does not exist and
+          hangs launchctl (the exact defect this fix closes). Refusing to
+          proceed -- re-run with a real login-user $SUDO_USER/$USER.
+      when: (operator_uid | default('') | trim) == '0'
+
+  tasks:
+    # --- state discriminator (J21): read the manifest and stat the receipt
+    - name: "read the provisioning manifest, if present"
+      ansible.builtin.slurp:
+        src: "{{ spike_root }}/created.env"
+      register: manifest_raw
+      ignore_errors: true
+
+    - name: "stat the teardown completion receipt, if present"
+      ansible.builtin.stat:
+        path: /private/tmp/gleipnir-signer-spike.torndown
+      register: receipt_stat
+
+    - name: "resolve manifest/receipt presence (J21 three-state discriminator)"
+      ansible.builtin.set_fact:
+        manifest_present: "{{ manifest_raw.content is defined }}"
+        receipt_present: "{{ receipt_stat.stat.exists }}"
+
+    # --- state (3): manifest absent AND receipt absent -> REFUSE LOUDLY (J9)
+    - name: "STATE 3: refuse loudly on unknown state -- remove nothing (J9)"
+      ansible.builtin.fail:
+        msg: >-
+          Refusing to tear down: neither the provisioning manifest
+          ({{ spike_root }}/created.env) nor the completion receipt
+          (/private/tmp/gleipnir-signer-spike.torndown) is present. This is
+          an UNKNOWN state -- teardown will not guess which objects, if
+          any, belong to a prior run. Reconcile the box by hand before
+          re-provisioning (J9).
+      when: not manifest_present and not receipt_present
+
+    # --- state (2): manifest absent, receipt present -> VERIFIED no-op
+    - name: "STATE 2: read the completion receipt as evidence for the verified no-op"
+      ansible.builtin.slurp:
+        src: /private/tmp/gleipnir-signer-spike.torndown
+      register: receipt_raw
+      when: not manifest_present and receipt_present
+
+    - name: "STATE 2: report a VERIFIED clean no-op, quoting the receipt -- remove nothing"
+      ansible.builtin.debug:
+        msg: >-
+          Verified clean no-op: no provisioning manifest is present, and
+          the completion receipt confirms this box was already torn down.
+          Receipt contents (timestamp, removed objects, consumed
+          created.env): {{ receipt_raw.content | b64decode }}
+      when: not manifest_present and receipt_present
+
+    # --- state (1): manifest present -> gated removal, each task gated on
+    #     its own *_CREATED flag from the manifest (J9/J22).
+    #
+    # Recorded-path resolution (quality finding #6b): the manifest
+    # (created.env, written by signer.yml) carries PLIST_A_PATH= and
+    # PLIST_B_PATH= lines with the ABSOLUTE paths signer.yml actually
+    # wrote. A `~/Library/...` literal here would resolve under ROOT's
+    # home when this play runs under sudo (the whole process is root),
+    # not the operator's -- silently missing the real file. Parse the
+    # recorded paths instead of guessing. regex_search with a single
+    # capture group returns a one-element list; `| first` unwraps it to
+    # the plain path string.
+    # regex_search returns None (not []) when the key is absent -- e.g. a
+    # phase-1-only manifest with no PLIST_*_PATH yet. `None | first` raises
+    # "'NoneType' object is not iterable", so coerce a non-match to [] with
+    # `| default([], true)` BEFORE `| first`, then default the element to ''
+    # ('' meaning "no recorded path" -> the removal task's when: gate skips it).
+    - name: "STATE 1: resolve the recorded arm-A plist path from the manifest (never a home-relative guess)"
+      when: manifest_present
+      ansible.builtin.set_fact:
+        plist_a_path: >-
+          {{ ((manifest_raw.content | default('') | b64decode)
+              | regex_search('PLIST_A_PATH=(.+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+
+    - name: "STATE 1: resolve the recorded arm-B plist path from the manifest (never a home-relative guess)"
+      when: manifest_present
+      ansible.builtin.set_fact:
+        plist_b_path: >-
+          {{ ((manifest_raw.content | default('') | b64decode)
+              | regex_search('PLIST_B_PATH=(.+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+
+    # PATH-BOUNDING (quality finding #5): the recorded plist paths are used as
+    # file-removal targets under privilege, so a mis-recorded manifest value
+    # (e.g. a repo dir) must NOT be blindly deletable. Bind each resolved path
+    # to the ONE of exactly two allowed plist literals its arm may occupy; any
+    # other non-empty value fails loudly rather than being removed.
+    - name: "STATE 1: define the allowed plist-path allowlist (the only two paths teardown may remove)"
+      ansible.builtin.set_fact:
+        allowed_plist_a: "{{ operator_home }}/Library/LaunchAgents/dev.gleipnir.signer.spike.agent.plist"
+        allowed_plist_b: "/Library/LaunchDaemons/dev.gleipnir.signer.spike.daemon.plist"
+
+    - name: "STATE 1: refuse to remove an arm-A plist path outside the allowlist (bounded deletion, #5)"
+      ansible.builtin.fail:
+        msg: >-
+          Recorded PLIST_A_PATH ({{ plist_a_path }}) is neither empty nor the
+          one allowed arm-A plist path ({{ allowed_plist_a }}). Refusing to
+          remove an out-of-allowlist path under privilege. Reconcile by hand.
+      when:
+        - manifest_present
+        - plist_a_path != ''
+        - plist_a_path != allowed_plist_a
+
+    - name: "STATE 1: refuse to remove an arm-B plist path outside the allowlist (bounded deletion, #5)"
+      ansible.builtin.fail:
+        msg: >-
+          Recorded PLIST_B_PATH ({{ plist_b_path }}) is neither empty nor the
+          one allowed arm-B plist path ({{ allowed_plist_b }}). Refusing to
+          remove an out-of-allowlist path under privilege. Reconcile by hand.
+      when:
+        - manifest_present
+        - plist_b_path != ''
+        - plist_b_path != allowed_plist_b
+
+    # --- unload BEFORE delete (quality finding #6a): a launchd job whose
+    # backing plist has already been removed out from under it is a
+    # phantom-job hazard on the next `launchctl print`/reload, so both
+    # jobs are booted out before either plist is unlinked, and both
+    # plists are gone before the account/group/scratch-root they belong
+    # to are removed.
+    - name: "STATE 1: check whether the arm-A (LaunchAgent) label is loaded (no-hang guard)"
+      when: "manifest_present and 'LABEL_A_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: "launchctl print gui/{{ operator_uid }}/dev.gleipnir.signer.spike.agent"
+      register: label_a_print
+      failed_when: false
+      changed_when: false
+      timeout: 10
+
+    - name: "STATE 1: bootout the arm-A (LaunchAgent) job"
+      when: "manifest_present and 'LABEL_A_CREATED=true' in (manifest_raw.content | default('') | b64decode) and label_a_print.rc == 0"
+      ansible.builtin.command: "launchctl bootout gui/{{ operator_uid }} {{ plist_a_path }}"
+      changed_when: true
+      timeout: 10
+
+    - name: "STATE 1: check whether the arm-B (LaunchDaemon) label is loaded (no-hang guard)"
+      when: "manifest_present and 'LABEL_B_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: "launchctl print system/dev.gleipnir.signer.spike.daemon"
+      register: label_b_print
+      failed_when: false
+      changed_when: false
+      timeout: 10
+
+    - name: "STATE 1: bootout the arm-B (LaunchDaemon) job"
+      when: "manifest_present and 'LABEL_B_CREATED=true' in (manifest_raw.content | default('') | b64decode) and label_b_print.rc == 0"
+      ansible.builtin.command: "launchctl bootout system {{ plist_b_path }}"
+      changed_when: true
+      timeout: 10
+
+    - name: "STATE 1: remove the arm-A (LaunchAgent) plist"
+      ansible.builtin.file:
+        path: "{{ plist_a_path }}"
+        state: absent
+
+    - name: "STATE 1: remove the arm-B (LaunchDaemon) plist"
+      when: "manifest_present and 'PLIST_B_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.file:
+        path: "{{ plist_b_path }}"
+        state: absent
+
+    - name: "STATE 1: remove the signer user account"
+      when: "manifest_present and 'ACCOUNT_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: dscl . -delete /Users/{{ signer_account_name }}
+      changed_when: true
+
+    - name: "STATE 1: remove the signer group"
+      when: "manifest_present and 'GROUP_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: dscl . -delete /Groups/{{ signer_account_name }}
+      changed_when: true
+
+    - name: "STATE 1: remove the scratch root"
+      when: "manifest_present and 'ROOT_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.file:
+        path: "{{ spike_root }}"
+        state: absent
+
+    # --- verify absence BEFORE writing the receipt (quality finding #6d,
+    # J9): a receipt claiming an object was removed must never be written
+    # while that object is still actually present. Each check is a
+    # read-only probe (failed_when:false / stat, never itself gated as a
+    # removal action) followed by a fail: task that only fires when the
+    # object both (a) was supposed to be removed this run (its
+    # *_CREATED flag was true) and (b) is still present.
+    - name: "STATE 1: verify the signer account is actually gone"
+      when: "manifest_present and 'ACCOUNT_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: dscl . -read /Users/{{ signer_account_name }}
+      register: account_absence_check
+      failed_when: false
+      changed_when: false
+      timeout: 10
+
+    - name: "STATE 1: fail loudly if the signer account is still present (never lie in the receipt)"
+      when: "manifest_present and 'ACCOUNT_CREATED=true' in (manifest_raw.content | default('') | b64decode) and account_absence_check.rc == 0"
+      ansible.builtin.fail:
+        msg: >-
+          Signer account /Users/{{ signer_account_name }} is still present
+          after the removal task ran. Refusing to write a completion
+          receipt that would falsely claim it was removed (J9).
+
+    - name: "STATE 1: verify the signer group is actually gone"
+      when: "manifest_present and 'GROUP_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.command: dscl . -read /Groups/{{ signer_account_name }}
+      register: group_absence_check
+      failed_when: false
+      changed_when: false
+      timeout: 10
+
+    - name: "STATE 1: fail loudly if the signer group is still present (never lie in the receipt)"
+      when: "manifest_present and 'GROUP_CREATED=true' in (manifest_raw.content | default('') | b64decode) and group_absence_check.rc == 0"
+      ansible.builtin.fail:
+        msg: >-
+          Signer group /Groups/{{ signer_account_name }} is still present
+          after the removal task ran. Refusing to write a completion
+          receipt that would falsely claim it was removed (J9).
+
+    - name: "STATE 1: verify the scratch root is actually gone"
+      when: "manifest_present and 'ROOT_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.stat:
+        path: "{{ spike_root }}"
+      register: root_absence_check
+
+    - name: "STATE 1: fail loudly if the scratch root is still present (never lie in the receipt)"
+      when: "manifest_present and 'ROOT_CREATED=true' in (manifest_raw.content | default('') | b64decode) and root_absence_check.stat.exists"
+      ansible.builtin.fail:
+        msg: >-
+          Scratch root {{ spike_root }} is still present after the removal
+          task ran. Refusing to write a completion receipt that would
+          falsely claim it was removed (J9).
+
+    - name: "STATE 1: verify the arm-A plist is actually gone"
+      when: "manifest_present and 'PLIST_A_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.stat:
+        path: "{{ plist_a_path }}"
+      register: plist_a_absence_check
+
+    - name: "STATE 1: fail loudly if the arm-A plist is still present (never lie in the receipt)"
+      when: "manifest_present and 'PLIST_A_CREATED=true' in (manifest_raw.content | default('') | b64decode) and plist_a_absence_check.stat.exists"
+      ansible.builtin.fail:
+        msg: >-
+          Arm-A plist {{ plist_a_path }} is still present after the
+          removal task ran. Refusing to write a completion receipt that
+          would falsely claim it was removed (J9).
+
+    - name: "STATE 1: verify the arm-B plist is actually gone"
+      when: "manifest_present and 'PLIST_B_CREATED=true' in (manifest_raw.content | default('') | b64decode)"
+      ansible.builtin.stat:
+        path: "{{ plist_b_path }}"
+      register: plist_b_absence_check
+
+    - name: "STATE 1: fail loudly if the arm-B plist is still present (never lie in the receipt)"
+      when: "manifest_present and 'PLIST_B_CREATED=true' in (manifest_raw.content | default('') | b64decode) and plist_b_absence_check.stat.exists"
+      ansible.builtin.fail:
+        msg: >-
+          Arm-B plist {{ plist_b_path }} is still present after the
+          removal task ran. Refusing to write a completion receipt that
+          would falsely claim it was removed (J9).
+
+    # Build the ACTUAL removed-object list from the manifest's *_CREATED
+    # flags (quality finding #5): the receipt must describe what THIS run was
+    # gated to remove and verified absent above, not a fixed string that could
+    # overstate (e.g. claim a plist/label was removed when none was created).
+    - name: "STATE 1: compute the actual removed-object set from the manifest flags"
+      ansible.builtin.set_fact:
+        removed_objects: >-
+          {{ ([]
+             + (['account'] if ('ACCOUNT_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['group'] if ('GROUP_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['scratch root'] if ('ROOT_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['arm-A plist'] if ('PLIST_A_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['arm-A label'] if ('LABEL_A_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['arm-B plist'] if ('PLIST_B_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else [])
+             + (['arm-B label'] if ('LABEL_B_CREATED=true' in (manifest_raw.content | default('') | b64decode)) else []))
+             | join(', ') }}
+
+    - name: "STATE 1: write the teardown completion receipt (final act, J21)"
+      when: manifest_present
+      ansible.builtin.copy:
+        dest: /private/tmp/gleipnir-signer-spike.torndown
+        mode: "0644"
+        content: |
+          teardown completed at {{ '%Y-%m-%dT%H:%M:%SZ' | strftime }}
+          removed (only objects whose *_CREATED flag was true, each verified absent above): {{ removed_objects | default('(none)', true) }}
+          consumed created.env (verbatim):
+          {{ manifest_raw.content | default('') | b64decode }}

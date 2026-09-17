@@ -16,6 +16,9 @@ __pycache__/
 # host-local S-2 caged-mode drop-target identity (per-machine uid/gid; never committed)
 .gleipnir/agent-identity.env
 
+# host-local signer service-account identity (per-machine uid/gid; never committed)
+.gleipnir/signer-identity.env
+
 # direnv env file: carries host-local secrets (e.g. GITHUB_TOKEN); never committed.
 # Was previously tracked (scaffold commit 8cad21d); untracked via `git rm --cached .envrc`.
 .envrc

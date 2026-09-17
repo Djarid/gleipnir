@@ -1,0 +1,254 @@
+---
+# ansible/signer.yml
+#
+# Signer service-account provisioning + scratch-root spike (Plan A,
+# ../.gleipnir/plans/signer-uid-separation-plan-a-launchd-spike.md).
+#
+# Parallel to site.yml (Decision 5, 1B): a SEPARATE play, NOT an extension
+# of site.yml or group_vars/all.yml (C2/D -- do not widen group_vars).
+# Provisions a dedicated non-login signer macOS service account + group
+# (via the SAME shared task-file site.yml's act 1 uses, C6) and an
+# exclusively-created scratch root for the launchd feasibility spike.
+#
+# Identity single source of truth (P3, mirrored from site.yml's
+# agent-identity.env pattern, E-1): `.gleipnir/signer-identity.env`,
+# operator-authored (this playbook never bootstraps a numeric uid/gid
+# itself -- S1/AC-nolit). Fails fast if that file is missing, exactly like
+# site.yml:72-82 does for agent-identity.env.
+#
+# Run (operator, real box, under sudo so the account/group acts can
+# create):
+#   sudo ansible-playbook -i inventory.ini signer.yml
+#
+# Writes nothing inside the repo (S2): every write-module target below is
+# `{{ spike_root }}`-prefixed. The identity-env read (stat/slurp) is a
+# READ, not a write, and is explicitly permitted (§S2 of the plan).
+
+- name: signer service-account provisioning + scratch-root spike
+  hosts: local
+  connection: local
+  gather_facts: true   # mirrors site.yml -- needed as a fallback for any facts
+
+  vars:
+    spike_root: /private/tmp/gleipnir-signer-spike
+    signer_account_name: gleipnirsigner
+    signer_fullname: "Gleipnir Signer"
+    signer_home: /var/empty
+    signer_shell: /usr/bin/false
+
+  pre_tasks:
+    # --- E-1: signer-identity.env is the single source of truth ----------
+    - name: "pre: confirm signer-identity.env is present (E-1)"
+      ansible.builtin.stat:
+        path: "{{ repo }}/.gleipnir/signer-identity.env"
+      register: signer_identity_stat
+
+    - name: "pre: fail fast if signer-identity.env is missing (E-1)"
+      ansible.builtin.fail:
+        msg: >-
+          {{ repo }}/.gleipnir/signer-identity.env not found. This playbook
+          reads the signer uid/gid from it (P3/E-1) and deliberately does
+          NOT bootstrap a numeric uid/gid itself -- that would reintroduce
+          a hardcoded-uid literal this playbook is required to avoid
+          (S1/AC-nolit). Choose a free uid and gid first (list the numeric
+          identifiers already in use under the local /Users and /Groups
+          directory service records via dscl), verified DISTINCT from the
+          agent account's identifiers, then author .gleipnir/signer-identity.env
+          with:
+            GLEIPNIR_SIGNER_UID=<free uid, != 510>
+            GLEIPNIR_SIGNER_GID=<free gid>
+          and re-run.
+      when: not signer_identity_stat.stat.exists
+
+    - name: "pre: read signer-identity.env content (E-1)"
+      ansible.builtin.slurp:
+        src: "{{ repo }}/.gleipnir/signer-identity.env"
+      register: signer_identity_slurp
+
+    - name: "pre: parse GLEIPNIR_SIGNER_UID / GLEIPNIR_SIGNER_GID (single source of truth, E-1)"
+      ansible.builtin.set_fact:
+        signer_uid: "{{ (signer_identity_slurp.content | b64decode) | regex_search('GLEIPNIR_SIGNER_UID=([0-9]+)', '\\1') | first }}"
+        signer_gid: "{{ (signer_identity_slurp.content | b64decode) | regex_search('GLEIPNIR_SIGNER_GID=([0-9]+)', '\\1') | first }}"
+
+  tasks:
+    - name: "provision the signer service account via the shared task-file"
+      ansible.builtin.include_tasks: tasks/create-service-account.yml
+      vars:
+        svc_account_name: "{{ signer_account_name }}"
+        svc_uid: "{{ signer_uid }}"
+        svc_gid: "{{ signer_gid }}"
+        svc_fullname: "{{ signer_fullname }}"
+        svc_home: "{{ signer_home }}"
+        svc_shell: "{{ signer_shell }}"
+
+    - name: "exclusively create the spike scratch root"
+      ansible.builtin.command: mkdir {{ spike_root }}
+      register: mkdir_root
+      changed_when: true
+      tags: [spike_scratch]
+
+    - name: "chown the scratch root to the signer account (signer-accessible)"
+      ansible.builtin.file:
+        path: "{{ spike_root }}"
+        state: directory
+        owner: "{{ signer_account_name }}"
+        group: "{{ signer_account_name }}"
+        mode: "0755"
+
+    - name: "create the scratch logs directory"
+      ansible.builtin.file:
+        path: ".gleipnir/var/tmp/leftover-logs"
+        state: directory
+        mode: "0755"
+        owner: "{{ signer_account_name }}"
+        group: "{{ signer_account_name }}"
+
+    - name: "stat the scratch logs directory for signer-writability (SC-8)"
+      ansible.builtin.stat:
+        path: "{{ spike_root }}/logs"
+      register: signer_logs_stat
+
+    - name: "verify the signer uid can write into logs/ (SC-8, non-mutating)"
+      ansible.builtin.assert:
+        that:
+          - signer_logs_stat.stat.exists
+          - signer_logs_stat.stat.isdir
+          - signer_logs_stat.stat.pw_name == signer_account_name
+          - signer_logs_stat.stat.wusr
+        fail_msg: >-
+          {{ spike_root }}/logs is not a signer-owned, owner-writable
+          directory (SC-8): exists={{ signer_logs_stat.stat.exists }}
+          isdir={{ signer_logs_stat.stat.isdir | default('n/a') }}
+          owner={{ signer_logs_stat.stat.pw_name | default('n/a') }}
+          wusr={{ signer_logs_stat.stat.wusr | default('n/a') }}.
+        success_msg: >-
+          {{ spike_root }}/logs exists, is a directory, is owned by
+          {{ signer_account_name }}, and is owner-writable (SC-8).
+
+    - name: "generate the throwaway scratch key"
+      ansible.builtin.command: dd if=/dev/urandom of={{ spike_root }}/scratch.key bs=32 count=1
+      args:
+        creates: "{{ spike_root }}/scratch.key"
+
+    - name: "lock down the throwaway scratch key mode and ownership"
+      ansible.builtin.file:
+        path: "{{ spike_root }}/scratch.key"
+        mode: "0600"
+        owner: "{{ signer_account_name }}"
+        group: "{{ signer_account_name }}"
+
+    - name: "read any existing provisioning manifest content (first-writer-wins check, J22)"
+      ansible.builtin.slurp:
+        src: "{{ spike_root }}/created.env"
+      register: existing_manifest
+      failed_when: false
+
+    - name: "decode existing manifest content (empty string if not yet written)"
+      ansible.builtin.set_fact:
+        existing_manifest_content: "{{ existing_manifest.content | default('') | b64decode }}"
+
+    # PROVENANCE SEMANTICS (operator-converged, reconciles J22 with J11):
+    # a *_CREATED flag records that the object is part of the SIGNER
+    # PROVISIONING LIFECYCLE -- i.e. it exists as a result of provisioning and
+    # is therefore teardown's to remove -- NOT "created by THIS particular
+    # invocation". So the flag is TRUE whenever the object is present after a
+    # provisioning run (whether this run created it or a prior run did). This
+    # makes a `--skip-tags spike_scratch` rerun agree with the first-writer
+    # record (changed=0, J11) while keeping teardown correct (J22): teardown
+    # removes exactly the lifecycle-provisioned objects. Group provenance is
+    # tracked from the GROUP's own presence, never conflated with the user.
+    - name: "stat the scratch root to determine its lifecycle membership (present now?)"
+      ansible.builtin.stat:
+        path: "{{ spike_root }}"
+      register: spike_root_stat
+
+    # Lifecycle membership = "the object is present as a result of provisioning
+    # and is therefore teardown's to remove". Base it on ACTUAL current
+    # presence, robust to how this invocation reached that state:
+    #  - account: created by this run (user_absent seen pre-creation) OR already
+    #    present (user_present). Either way it now belongs to the lifecycle.
+    #  - group: likewise from the GROUP's own query (never the user's).
+    #  - root: the scratch dir exists now (this run's exclusive mkdir created it,
+    #    or a prior run did and this invocation tag-skipped the mkdir). Uses a
+    #    stat, NOT `mkdir_root`, because under `--skip-tags spike_scratch` the
+    #    mkdir task is tag-skipped and its registered var is UNDEFINED.
+    - name: "compute per-object provisioning-lifecycle membership (J22 semantics)"
+      ansible.builtin.set_fact:
+        account_provisioned: "{{ (user_present or user_absent) | bool }}"
+        group_provisioned: "{{ (group_present or group_absent) | bool }}"
+        root_provisioned: "{{ spike_root_stat.stat.exists | bool }}"
+
+    # Extract any already-recorded phase-1 flag values. Absent key => '' (a
+    # sentinel meaning "not yet recorded"), NOT `omit`: omitting every key of a
+    # set_fact leaves it with zero pairs, which Ansible rejects. regex_search
+    # returns None on no-match, so coerce with `| default([], true) | first`
+    # then default the element to '' -- always a comparable scalar string.
+    - name: "extract any already-recorded phase-1 flag values (for contradiction check, J22)"
+      ansible.builtin.set_fact:
+        recorded_account_created: >-
+          {{ (existing_manifest_content | regex_search('ACCOUNT_CREATED=(\\S+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+        recorded_group_created: >-
+          {{ (existing_manifest_content | regex_search('GROUP_CREATED=(\\S+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+        recorded_root_created: >-
+          {{ (existing_manifest_content | regex_search('ROOT_CREATED=(\\S+)', '\\1')
+              | default([], true) | first) | default('', true) }}
+
+    # A CONTRADICTION worth failing on is: the manifest records the object as
+    # provisioned (=true) but the object is NO LONGER present -- that is a real
+    # inconsistency (something removed a lifecycle object out of band). A rerun
+    # that simply finds the object still present is NOT a contradiction; it
+    # confirms the record. (recorded=false + now-present cannot occur here: the
+    # first writer only ever records true for a present object.)
+    - name: "fail loudly if a recorded ACCOUNT_CREATED=true is contradicted by the account now being ABSENT (J22)"
+      ansible.builtin.fail:
+        msg: >-
+          {{ spike_root }}/created.env records ACCOUNT_CREATED=true, but the
+          account {{ signer_account_name }} is NOT present now (user_absent=
+          {{ user_absent }}). The provisioning manifest and the live box
+          disagree -- refusing to proceed on an inconsistent lifecycle record
+          (J22). Reconcile by hand.
+      when:
+        - recorded_account_created != ''
+        - (recorded_account_created | string | lower) == 'true'
+        - not (account_provisioned | bool)
+
+    - name: "fail loudly if a recorded GROUP_CREATED=true is contradicted by the group now being ABSENT (J22)"
+      ansible.builtin.fail:
+        msg: >-
+          {{ spike_root }}/created.env records GROUP_CREATED=true, but the
+          group {{ signer_account_name }} is NOT present now. The provisioning
+          manifest and the live box disagree -- refusing to proceed on an
+          inconsistent lifecycle record (J22). Reconcile by hand.
+      when:
+        - recorded_group_created != ''
+        - (recorded_group_created | string | lower) == 'true'
+        - not (group_provisioned | bool)
+
+    - name: "append ACCOUNT_CREATED to the provisioning manifest (first-writer-wins, J22)"
+      ansible.builtin.lineinfile:
+        path: "{{ spike_root }}/created.env"
+        create: true
+        mode: "0644"
+        regexp: '^ACCOUNT_CREATED='
+        line: "ACCOUNT_CREATED={{ account_provisioned | string | lower }}"
+      when: "'ACCOUNT_CREATED=' not in existing_manifest_content"
+
+    - name: "append GROUP_CREATED to the provisioning manifest (first-writer-wins, J22)"
+      ansible.builtin.lineinfile:
+        path: "{{ spike_root }}/created.env"
+        create: true
+        mode: "0644"
+        regexp: '^GROUP_CREATED='
+        line: "GROUP_CREATED={{ group_provisioned | string | lower }}"
+      when: "'GROUP_CREATED=' not in existing_manifest_content"
+
+    - name: "append ROOT_CREATED to the provisioning manifest (first-writer-wins, J22)"
+      ansible.builtin.lineinfile:
+        path: "{{ spike_root }}/created.env"
+        create: true
+        mode: "0644"
+        regexp: '^ROOT_CREATED='
+        line: "ROOT_CREATED={{ root_provisioned | string | lower }}"
+      when: "'ROOT_CREATED=' not in existing_manifest_content"
