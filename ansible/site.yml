@@ -95,47 +95,36 @@
 
   tasks:
     # =======================================================================
-    # act 1 -- dedicated agent uid/gid (macOS dscl/sysadminctl).
-    # `command:`, not ansible.builtin.user (BC-5): unreliable on Darwin for
-    # a non-login service account. Query-then-when guard (no `creates` file
-    # exists for a dscl account) -- E-1 idempotency.
+    # act 1 -- dedicated agent uid/gid (macOS dscl/sysadminctl), now
+    # delegated to the shared task-file (C6/OA-1): `ansible/tasks/
+    # create-service-account.yml` is the ONE extracted, parameterised
+    # "create a macOS service account" task-file that both this play's act 1
+    # and `ansible/signer.yml` consume -- no duplicated inline dscl/
+    # sysadminctl copy. `include_tasks:` is DYNAMIC, so tag inheritance does
+    # NOT propagate into the included file's tasks without an explicit
+    # `apply:` (J24(b)); both `tags:` (selects the include task itself) and
+    # `apply: tags:` (propagates into every task inside the included file)
+    # below carry the SAME [act1, user_create, destructive] set, so
+    # `--tags act1` / `--skip-tags destructive` continue to select/exclude
+    # the extracted tasks exactly as they did the old inline ones. The
+    # include itself stays guarded on `when: not ansible_check_mode` (E-8):
+    # the shared file's own `command:` tasks carry no check-mode guard of
+    # their own, so gating the include is what preserves this playbook's
+    # existing --check safety (AC-check, layer2-dryrun.sh).
     # =======================================================================
-    - name: "act1: query existing agent account (dscl) -- idempotency guard (P4/BC-5/E-1)"
-      ansible.builtin.command: dscl . -read /Users/{{ agent_account_name }} UniqueID
-      register: dscl_query
-      changed_when: false
-      failed_when: false
-      when: not ansible_check_mode   # E-8: command: tasks don't support --check
-      tags: [act1]
-
-    - name: "act1: create the dedicated agent group record (dscl)"
-      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }}
-      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
-      # BUG-4 (ansible-lint no-changed-when): this task only ever runs when
-      # the query-then-when guard above (dscl_query.rc != 0) found the
-      # account absent, so every execution is a genuine creation -- true is
-      # the honest, not a suppressed, changed_when (E-1 idempotency signal).
-      changed_when: true
-      tags: [act1, user_create, destructive]
-
-    - name: "act1: set the agent group PrimaryGroupID"
-      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} PrimaryGroupID {{ agent_gid }}
-      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
-      changed_when: true
-      tags: [act1, user_create, destructive]
-
-    - name: "act1: set the agent group RecordName"
-      ansible.builtin.command: dscl . -create /Groups/{{ agent_account_name }} RecordName {{ agent_account_name }}
-      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
-      changed_when: true
-      tags: [act1, user_create, destructive]
-
-    - name: "act1: create the non-login agent user (sysadminctl)"
-      ansible.builtin.command: >-
-        sysadminctl -addUser {{ agent_account_name }} -UID {{ agent_uid }} -GID {{ agent_gid }}
-        -fullName "Gleipnir Agent" -home /var/empty -shell /usr/bin/false
-      when: not ansible_check_mode and (dscl_query.rc | default(1)) != 0
-      changed_when: true
+    - name: "act1: provision the dedicated agent service account (delegates to the shared task-file, C6)"
+      ansible.builtin.include_tasks:
+        file: tasks/create-service-account.yml
+        apply:
+          tags: [act1, user_create, destructive]
+      vars:
+        svc_account_name: "{{ agent_account_name }}"
+        svc_uid: "{{ agent_uid }}"
+        svc_gid: "{{ agent_gid }}"
+        svc_fullname: "Gleipnir Agent"
+        svc_home: /var/empty
+        svc_shell: /usr/bin/false
+      when: not ansible_check_mode   # E-8: shared file's command: tasks don't support --check
       tags: [act1, user_create, destructive]
 
     # =======================================================================

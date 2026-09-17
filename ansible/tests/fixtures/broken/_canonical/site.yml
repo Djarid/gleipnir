@@ -1,0 +1,27 @@
+---
+# ansible/tests/fixtures/broken/_canonical/site.yml
+#
+# Canonical fixture: a MINIMAL stand-in for the real production
+# ansible/site.yml, containing only what signer-static.sh's S5 check
+# examines -- act 1's adoption of the shared account-creation task-file.
+# This is NOT the real site.yml (428 lines, untouched by this plan except
+# at act 1); it exists only so signer-static.sh has something to check
+# S5 against inside this fixture tree.
+
+- name: gleipnir agent-account provisioning (fixture stand-in)
+  hosts: local
+  gather_facts: false
+
+  vars:
+    agent_account_name: gleipnir-agent
+
+  tasks:
+    - name: "act1: provision the agent service account via the shared task-file"
+      ansible.builtin.include_tasks: tasks/create-service-account.yml
+      vars:
+        svc_account_name: "{{ agent_account_name }}"
+        svc_uid: "{{ agent_uid }}"
+        svc_gid: "{{ agent_gid }}"
+        svc_fullname: "Gleipnir Agent"
+        svc_home: /var/empty
+        svc_shell: /usr/bin/false

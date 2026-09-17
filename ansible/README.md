@@ -40,8 +40,14 @@ Acts (1)–(6) of the proposal, in this exact order (act-5 key-lock textually
 key loosened), then a **failing assertion** (AC-4) that the caged boundary
 genuinely closed:
 
-1. **act 1** — create the dedicated non-login agent uid/gid (`dscl`/
-   `sysadminctl`), guarded so re-running is a no-op.
+1. **act 1** — create the dedicated non-login agent uid/gid, guarded so
+   re-running is a no-op. Delegates to the shared task-file
+   [`tasks/create-service-account.yml`](tasks/create-service-account.yml)
+   (C6/OA-1 — the ONE extracted, parameterised "create a macOS service
+   account" task-file) via `include_tasks:` with an explicit `apply:` for
+   tag propagation, rather than inlining the `dscl`/`sysadminctl` commands.
+   [`signer.yml`](signer.yml) is the second consumer of that same shared
+   task-file (Plan A's dedicated signer service account).
 2. **act 3** — ownership/group layout: operator owns the repo; `src/`
    readable to all; `.gleipnir/` itself readable+traversable (non-recursive)
    plus its non-enforcement subtrees (`skills/`, `policy/` — each tolerates
@@ -143,6 +149,9 @@ ansible/
   site.yml              the single play: acts 1-6 + AC-4 assert
   inventory.ini          localhost, local connection
   group_vars/all.yml      repo path, account name, key path, 8-entry enforcement-path mirror
+  tasks/create-service-account.yml  shared account-creation task-file (consumed by site.yml act 1 AND signer.yml)
+  signer.yml               Plan A: provisions the dedicated signer service account + the launchd-spike scratch root
+  signer-teardown.yml       Plan A: reverses signer.yml, gated on the provisioning manifest (three-state teardown)
   README.md               this file
   tests/                   the 3-layer test harness (see tests/README.md)
 ```

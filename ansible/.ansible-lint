@@ -29,3 +29,9 @@
 # the code fix, not a config suppression).
 skip_list:
   - name[casing]
+exclude_paths:
+  # Repo-root-relative: ansible-lint resolves exclude_paths against the
+  # invocation cwd (repo root), NOT this config file's directory. Verified
+  # at Plan-A step 4 (`tests/fixtures/broken/` excluded nothing; this form
+  # gives a clean pass). Scoped to exactly the one deliberately-broken tree.
+  - ansible/tests/fixtures/broken/
